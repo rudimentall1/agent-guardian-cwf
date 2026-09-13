@@ -1,82 +1,94 @@
 # Agent Guardian Demo Flow
 
-## Live Demo Scenario
+## Live demo
 
-Network:
+Network: Arbitrum Sepolia
 
-Arbitrum Sepolia
+Chain ID: 421614
 
-Chain ID:
+The current demo follows the same security path used by the contracts. It shows both successful execution and actions that are rejected by the policy.
 
-421614
+## Step 1: Deploy the stack
 
----
+The demo deploys:
 
-# Step 1 — Agent Identity Creation
+- `AgentRegistry`
+- `PolicyRegistry`
+- `AgentExecutionGuard`
+- `AgentSmartWallet`
+- a simple target contract used as the transaction destination
 
-Owner creates an autonomous agent.
+The SmartWallet is deployed with the Guard address, so the wallet only accepts execution through that Guard.
 
-Result:
+## Step 2: Register the agent
 
-Agent registered
+The owner registers the agent with an EIP-712 signature.
 
-The agent receives an on-chain identity.
+The registry records the agent as active and binds it to the owner.
 
----
+## Step 3: Create the policy
 
-# Step 2 — Guardian Assignment
+The owner creates a policy with these values:
 
-Owner assigns a recovery guardian.
+- maximum transaction value: 0.5 ETH
+- daily limit: 0.6 ETH
+- approval threshold: 0.3 ETH
+- authorized native-transfer target: the demo target contract
 
-Result:
+## Step 4: Fund the SmartWallet
 
-Guardian assigned
+The owner sends 2 ETH to the `AgentSmartWallet`.
 
-The guardian becomes the emergency security authority.
+The Guard remains unfunded. The agent execution path uses the SmartWallet balance instead.
 
----
+## Step 5: Small transfer succeeds
 
-# Step 3 — Normal Operation
+The agent signs a 0.1 ETH execution intent.
 
-Agent is active.
+The relayer submits it.
 
-Example:
+The amount is below the owner approval threshold, so the Guard accepts the intent and the SmartWallet funds the transfer.
 
-Agent active before recovery: true
+## Step 6: Larger transfer is rejected
 
----
+The agent signs a 0.4 ETH intent.
 
-# Step 4 — Security Incident
+The amount is below the 0.5 ETH transaction limit but above the 0.3 ETH approval threshold.
 
-Simulation:
+Without an owner approval, the Guard rejects the execution.
 
-The autonomous agent is considered compromised.
+## Step 7: Owner approval allows the transfer
 
----
+The owner signs a fresh approval for the same execution intent.
 
-# Step 5 — Emergency Recovery
+The relayer submits the intent together with the approval.
 
-Guardian executes recovery.
+The Guard verifies both signatures and the 0.4 ETH transfer succeeds.
 
-Transaction:
+The total spend for the day is now 0.5 ETH.
 
-executeRecovery(agent)
+## Step 8: Daily limit blocks the next transfer
 
----
+The agent tries another 0.2 ETH transfer.
 
-# Step 6 — Protected State
+The transaction itself is within the per-transaction limit, but 0.5 + 0.2 would exceed the 0.6 ETH daily limit.
 
-The agent is disabled.
+The Guard rejects the transaction.
 
-Result:
+## Step 9: Owner pauses the agent
 
-Agent active after recovery: false
+The owner pauses the agent.
 
----
+Even a small execution that would otherwise satisfy the policy is rejected while the agent is paused.
 
-# Conclusion
+## Step 10: Recovery guardian disables the agent
 
-Agent Guardian demonstrates a new security primitive:
+A recovery guardian is assigned to the agent.
 
-Autonomous agents can operate independently while maintaining a human-controlled emergency safety mechanism.
+The guardian can deactivate the agent through the registry. After recovery, the agent is no longer active and protected execution is blocked.
 
+## What the demo proves
+
+The demo is not just a successful transaction.
+
+It shows that the same execution path can allow normal agent activity, require human approval for larger transfers, enforce a daily budget and stop the agent through an emergency control.

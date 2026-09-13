@@ -1,158 +1,136 @@
 # Agent Guardian Security Model
 
-## Security Goal
+## Security goal
 
-Agent Guardian protects autonomous blockchain agents from unauthorized, unsafe or compromised execution.
+Agent Guardian is designed to limit what an autonomous agent can do with blockchain assets.
 
-The protocol assumes that AI agents will eventually manage valuable assets and therefore require programmable security boundaries.
+The main assumption is that an agent key can be compromised, make a bad decision or be controlled by faulty automation. The system should still have deterministic limits around the key.
 
----
+## Threat 1: Compromised agent key
 
-# Threat Model
+### Risk
 
-## 1. Compromised Agent
+An attacker gains control of the agent signing key and tries to send transactions.
 
-Scenario:
+### Protection
 
-An AI agent private key is leaked or the agent starts behaving incorrectly.
+The attacker still has to pass the Guard checks:
 
-Risk:
+- active agent status
+- valid policy
+- exact target and selector authorization
+- transaction value limit
+- daily limit
+- nonce
+- deadline
+- signature checks
+- owner approval when required
 
-- unauthorized transactions
+The owner can also pause the agent, and a recovery guardian can deactivate it entirely.
 
-- asset loss
+## Threat 2: Unlimited permissions
 
-- malicious interactions
+### Risk
 
-Protection:
+The agent is allowed to call arbitrary contracts or move arbitrary amounts.
 
-Agent Guardian allows an authorized guardian to immediately disable the agent.
+### Protection
 
----
+`PolicyRegistry` defines the allowed actions and spending limits.
 
-## 2. Excessive Permissions
+Call permissions use exact `(target, selector)` pairs. A permission for one contract does not automatically apply to another contract.
 
-Scenario:
+## Threat 3: Spending-limit bypass
 
-An agent receives unlimited wallet permissions.
+### Risk
 
-Risk:
+The agent tries to split transactions or use another execution path to get around the limits.
 
-A single mistake can create catastrophic financial damage.
+### Protection
 
-Protection:
+The Guard tracks both per-transaction value and daily spending for the policy.
 
-PolicyRegistry defines:
+Owner approval can also be required above a configured threshold.
 
-- allowed actions
+## Threat 4: Replay
 
-- approved targets
+### Risk
 
-- spending limits
+A valid signed intent is submitted again or modified before being resubmitted.
 
-- execution rules
+### Protection
 
----
+The execution intent is bound to the agent, wallet, target, value, calldata hash, nonce, deadline and policy hash.
 
-## 3. Malicious Automation
+The EIP-712 domain also binds the signature to the chain and Guard contract. A consumed nonce cannot be reused.
 
-Scenario:
+## Threat 5: Policy substitution
 
-An autonomous system executes unintended actions repeatedly.
+### Risk
 
-Risk:
+An attacker creates or selects another policy and tries to use it for an existing agent execution.
 
-Loss of funds through automated mistakes.
+### Protection
 
-Protection:
+The policy is part of the signed intent and the Guard checks the policy owner and agent binding before execution.
 
-Execution Guard validates every operation before execution.
+A policy created by another owner cannot silently gain execution authority over someone else's agent.
 
----
+## Threat 6: Reentrancy
 
-# Security Architecture
+### Risk
 
-## AgentRegistry
+A target contract or attacker callback tries to enter the Guard again during execution.
 
-Provides:
+### Protection
 
-- agent identity
+The execution paths use reentrancy protection, and the test suite contains explicit reentrancy scenarios.
 
-- ownership binding
+## Threat 7: Wrong wallet or Guard
 
-- lifecycle status
+### Risk
 
-- guardian assignment
+An execution is pointed at a SmartWallet controlled by a different Guard.
 
-## PolicyRegistry
+### Protection
 
-Provides:
+`AgentSmartWallet` is bound to its specific Guard and rejects execution requests from another Guard.
 
-- programmable permissions
+## Threat 8: Owner access is compromised
 
-- authorization rules
+### Risk
 
-- spending constraints
+The normal owner account is also unavailable or compromised during an incident.
 
-## AgentExecutionGuard
+### Protection
 
-Provides:
+A separate recovery guardian can deactivate the agent at the registry level.
 
-- transaction validation
+This is a separate control path from normal agent execution.
 
-- signature verification
+## Custody model
 
-- nonce protection
+The Guard does not act as a user wallet.
 
-- policy enforcement
+The native asset custody path is:
 
----
+```text
+Owner
+  |
+  v
+AgentSmartWallet
+  |
+  v
+AgentExecutionGuard
+  |
+  v
+Target
+```
 
-# Emergency Recovery
+The regular execution entry points reject nonzero attached value. Native value transfers use the wallet-custody functions, which draw funds from the bound SmartWallet.
 
-Guardian flow:
+## What is intentionally not part of the security model
 
-Agent active
+There is no off-chain AI risk engine making the final allow or deny decision.
 
-&#x20;   |
-
-&#x20;   v
-
-Suspicious activity detected
-
-&#x20;   |
-
-&#x20;   v
-
-Guardian executes recovery
-
-&#x20;   |
-
-&#x20;   v
-
-Agent disabled
-
-Result:
-
-The compromised agent can no longer execute protected operations.
-
----
-
-# Security Principles
-
-## Least Privilege
-
-Agents receive only required permissions.
-
-## Human Control Boundary
-
-Humans remain the final security authority.
-
-## Immutable Verification
-
-All critical actions are recorded on-chain.
-
-## Fail Safe
-
-When compromise is detected, the system moves into a secure disabled state.
-
+The current enforcement boundary is deterministic and on-chain. An AI service, SDK, monitoring system and other higher-level tooling can be added later without changing the core security boundary described here.
