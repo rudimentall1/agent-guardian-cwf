@@ -8,8 +8,10 @@
   },
   "scripts": {
     "compile": "hardhat clean && hardhat compile",
-    "test": "hardhat test",
-    "test:hardhat": "hardhat test",
+    "test": "hardhat test && node scripts/run-cwf-tests.js",
+    "test:contracts": "hardhat test",
+    "test:cwf": "node scripts/run-cwf-tests.js",
+    "test:hardhat": "hardhat test && node scripts/run-cwf-tests.js",
     "test:cwf:intent": "hardhat test runtime-test/intent.test.ts",
     "coverage": "hardhat coverage"
   },
