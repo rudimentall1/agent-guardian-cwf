@@ -85,15 +85,21 @@ async function main() {
   );
   await wallet.waitForDeployment();
 
-  const target = await (
+  const targetA = await (
     await ethers.getContractFactory("RecordingTarget")
   ).deploy();
-  await target.waitForDeployment();
+  await targetA.waitForDeployment();
+
+  const targetB = await (
+    await ethers.getContractFactory("RecordingTarget")
+  ).deploy();
+  await targetB.waitForDeployment();
 
   console.log("  Agent:              ", agent.address);
   console.log("  AgentExecutionGuard:", await guard.getAddress());
   console.log("  AgentSmartWallet:   ", await wallet.getAddress());
-  console.log("  Target:             ", await target.getAddress());
+  console.log("  Target A:           ", await targetA.getAddress());
+  console.log("  Target B:           ", await targetB.getAddress());
 
   // ------------------------------------------------------------------
   // Register agent
@@ -155,7 +161,9 @@ async function main() {
   );
 
   const recordSelector = ethers.id("record(uint256)").slice(0, 10);
-  const targetAddress = await target.getAddress();
+
+  const targetAAddress = await targetA.getAddress();
+  const targetBAddress = await targetB.getAddress();
 
   await (
     await policyRegistry.connect(owner).createPolicy(
@@ -168,7 +176,11 @@ async function main() {
       FAR_FUTURE,
       [
         {
-          target: targetAddress,
+          target: targetAAddress,
+          selector: recordSelector,
+        },
+        {
+          target: targetBAddress,
           selector: recordSelector,
         },
       ],
@@ -183,34 +195,42 @@ async function main() {
 
   const policyHash = await policyRegistry.policyHashOf(policyId);
 
-  console.log("  Authorized target: ", targetAddress);
+  console.log("  Authorized target A:", targetAAddress);
+  console.log("  Authorized target B:", targetBAddress);
   console.log("  Authorized action: record(uint256)");
-  console.log("  Selector:          ", recordSelector);
-  console.log("  Policy hash:       ", policyHash);
+  console.log("  Selector:           ", recordSelector);
+  console.log("  Policy hash:        ", policyHash);
 
   // ------------------------------------------------------------------
-  // Build tool definition
+  // Build tool definitions
   // ------------------------------------------------------------------
 
-  const tool = defineContractTool(
-    "recording-target",
+  const toolA = defineContractTool(
+    "recording-target-a",
     "record",
-    targetAddress,
+    targetAAddress,
+    "function record(uint256 amount)",
+  );
+
+  const toolB = defineContractTool(
+    "recording-target-b",
+    "record",
+    targetBAddress,
     "function record(uint256 amount)",
   );
 
   // ------------------------------------------------------------------
-  // Scenario A — legitimate AI request
+  // Scenario A — legitimate execution on target A
   // ------------------------------------------------------------------
 
   header("4. Scenario A — legitimate AI request");
 
-  console.log("  AI proposal: record(42)");
+  console.log("  AI proposal: target A -> record(42)");
 
-  const request = {
+  const requestA = {
     agent: agent.address,
     wallet: await wallet.getAddress(),
-    tool: "recording-target",
+    tool: "recording-target-a",
     action: "record",
     args: [42n],
     value: 0n,
@@ -219,59 +239,60 @@ async function main() {
     policyHash,
   };
 
-  const resolved = resolveToolRequest(tool, request);
+  const resolvedA = resolveToolRequest(toolA, requestA);
 
-  console.log("  Canonical target:   ", resolved.intent.target);
-  console.log("  Calldata:           ", resolved.intent.data);
+  console.log("  Signed target:       ", resolvedA.intent.target);
+  console.log("  Calldata:            ", resolvedA.intent.data);
   console.log(
-    "  Calldata hash:      ",
-    ethers.keccak256(resolved.intent.data),
+    "  Calldata hash:       ",
+    ethers.keccak256(resolvedA.intent.data),
   );
 
-  const signature = await signIntent(
+  const signatureA = await signIntent(
     agent,
-    resolved.intent,
+    resolvedA.intent,
     network.chainId,
     await guard.getAddress(),
   );
 
-  console.log("  Agent signature:     created");
-
   await (
     await guard.connect(relayer).executeFromWallet(
-      resolved.intent.agent,
-      resolved.intent.wallet,
-      resolved.intent.target,
-      resolved.intent.value,
-      resolved.intent.data,
-      resolved.intent.nonce,
-      resolved.intent.deadline,
-      resolved.intent.policyHash,
-      signature,
+      resolvedA.intent.agent,
+      resolvedA.intent.wallet,
+      resolvedA.intent.target,
+      resolvedA.intent.value,
+      resolvedA.intent.data,
+      resolvedA.intent.nonce,
+      resolvedA.intent.deadline,
+      resolvedA.intent.policyHash,
+      signatureA,
     )
   ).wait();
 
-  ok("Intent accepted by Guard and executed by SmartWallet");
+  ok("Target A execution accepted");
 
   console.log(
-    "  Target call count:  ",
-    (await target.callCount()).toString(),
+    "  Target A call count: ",
+    (await targetA.callCount()).toString(),
+  );
+  console.log(
+    "  Target B call count: ",
+    (await targetB.callCount()).toString(),
   );
 
   // ------------------------------------------------------------------
-  // Scenario B — attacker changes calldata after signing
+  // Scenario B — calldata mutation
   // ------------------------------------------------------------------
 
   header("5. Scenario B — attacker mutates signed calldata");
 
-  console.log("  New signed intent nonce: 1");
-  console.log("  Original AI proposal:     record(42)");
-  console.log("  Attacker mutation:        record(999)");
+  console.log("  Signed:       target A -> record(42)");
+  console.log("  Attack:       target A -> record(999)");
 
   const attackRequest = {
     agent: agent.address,
     wallet: await wallet.getAddress(),
-    tool: "recording-target",
+    tool: "recording-target-a",
     action: "record",
     args: [42n],
     value: 0n,
@@ -281,7 +302,7 @@ async function main() {
   };
 
   const signedIntent = resolveToolRequest(
-    tool,
+    toolA,
     attackRequest,
   );
 
@@ -292,16 +313,7 @@ async function main() {
     await guard.getAddress(),
   );
 
-  const modifiedData = tool.encode([999n]);
-
-  console.log(
-    "  Signed calldata:        ",
-    signedIntent.intent.data,
-  );
-  console.log(
-    "  Modified calldata:      ",
-    modifiedData,
-  );
+  const modifiedData = toolA.encode([999n]);
 
   try {
     await guard.connect(relayer).executeFromWallet(
@@ -316,7 +328,7 @@ async function main() {
       attackSignature,
     );
 
-    console.log("  ERROR: modified intent was unexpectedly accepted");
+    console.log("  ERROR: modified calldata was accepted");
     process.exitCode = 1;
     return;
   } catch (error: any) {
@@ -328,19 +340,89 @@ async function main() {
       return;
     }
 
-    blocked("Modified calldata rejected by the Guard");
-    console.log("  Reason:                ", reason);
+    blocked("Calldata mutation rejected");
+    console.log("  Reason:", reason);
+  }
+
+  // ------------------------------------------------------------------
+  // Scenario C1 — target substitution
+  // ------------------------------------------------------------------
+
+  header("6. Scenario C1 — attacker substitutes target contract");
+
+  console.log("  Signed target:     Target A");
+  console.log("  Attack target:     Target B");
+  console.log("  Both are allowed by the policy.");
+
+  const targetSwapRequest = {
+    agent: agent.address,
+    wallet: await wallet.getAddress(),
+    tool: "recording-target-a",
+    action: "record",
+    args: [77n],
+    value: 0n,
+    nonce: 1n,
+    deadline: FAR_FUTURE,
+    policyHash,
+  };
+
+  const signedTargetIntent = resolveToolRequest(
+    toolA,
+    targetSwapRequest,
+  );
+
+  const targetSwapSignature = await signIntent(
+    agent,
+    signedTargetIntent.intent,
+    network.chainId,
+    await guard.getAddress(),
+  );
+
+  const targetBData = toolB.encode([77n]);
+
+  try {
+    await guard.connect(relayer).executeFromWallet(
+      signedTargetIntent.intent.agent,
+      signedTargetIntent.intent.wallet,
+      targetBAddress,
+      signedTargetIntent.intent.value,
+      targetBData,
+      signedTargetIntent.intent.nonce,
+      signedTargetIntent.intent.deadline,
+      signedTargetIntent.intent.policyHash,
+      targetSwapSignature,
+    );
+
+    console.log("  ERROR: target substitution was accepted");
+    process.exitCode = 1;
+    return;
+  } catch (error: any) {
+    const reason = decodeRevert(guard, error);
+
+    if (reason !== "InvalidSignature") {
+      console.log(`  ERROR: unexpected rejection reason: ${reason}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    blocked("Target substitution rejected by signed intent");
+    console.log("  Reason:", reason);
   }
 
   // ------------------------------------------------------------------
   // Final state
   // ------------------------------------------------------------------
 
-  header("6. Final security state");
+  header("7. Final security state");
 
   console.log(
-    "  Successful target calls:",
-    (await target.callCount()).toString(),
+    "  Target A successful calls:",
+    (await targetA.callCount()).toString(),
+  );
+
+  console.log(
+    "  Target B successful calls:",
+    (await targetB.callCount()).toString(),
   );
 
   console.log(
@@ -365,7 +447,7 @@ async function main() {
   );
 
   console.log("");
-  console.log("  RESULT: SECURITY BOUNDARY VERIFIED");
+  console.log("  RESULT: TARGET + CALLDATA BINDING VERIFIED");
   console.log("");
 }
 
