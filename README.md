@@ -1,214 +1,257 @@
-# Agent Guardian
+﻿# Agent Guardian CWF
 
-## Autonomous Agent Security Layer for Arbitrum
+## Security boundary for autonomous AI agent transactions
 
-**[Watch the demo video](https://youtu.be/z7_GXu9Phwc)** — architecture walkthrough + live run on Arbitrum Sepolia.
+Agent Guardian CWF is a transaction security layer for AI agents interacting with blockchain contracts.
 
-Agent Guardian is a security framework for autonomous AI agents operating on-chain.
+The current implementation combines deterministic on-chain authorization with a small off-chain request layer.
 
-The protocol allows AI agents to execute transactions while enforcing strict security boundaries:
-- agent identity verification
-- programmable spending policies
-- transaction authorization
+## Execution flow
+
+1. An agent creates a ToolRequest.
+2. The registered ToolDefinition determines the target and calldata encoding.
+3. The request is converted into a TransactionIntent.
+4. The intent is signed with EIP-712.
+5. The signed intent can be checked through the API preflight endpoint.
+6. AgentExecutionGuard performs the final authorization checks.
+7. AgentSmartWallet provides wallet custody when native value is moved.
+8. The authorized call reaches the target contract.
+
+The agent request does not provide an arbitrary target address. The target comes from the registered tool definition.
+
+## Implemented components
+
+### ToolRequest and TransactionIntent
+
+`runtime/tool-request.ts` converts a tool request into a `TransactionIntent`.
+
+A ToolDefinition contains:
+
+- tool name
+- action name
+- target contract
+- ABI fragment used to encode calldata
+
+The resulting intent contains:
+
+- agent
+- wallet
+- target
+- value
+- calldata
+- nonce
+- deadline
+- policy hash
+
+The intent is signed with EIP-712.
+
+### AgentExecutionGuard
+
+`contracts/AgentExecutionGuard.sol` performs the final authorization checks before execution.
+
+The Guard checks, among other things:
+
+- agent registration and active status
+- wallet binding
+- intent signature
+- nonce
+- deadline
+- policy binding
+- target and selector authorization
+- transaction value limits
+- daily spending limits
+- owner approval thresholds
+- pause state
 - replay protection
-- emergency recovery controls
 
-Built for the future of autonomous wallets and AI-driven Web3 applications.
+The implementation supports EOA and ERC-1271 signatures.
 
-**Scope note:** everything in this repository is a deterministic, on-chain
-enforcement layer (identity, policy, execution, recovery). There is no
-off-chain risk-scoring or AI-advisory service implemented here yet — see
-"What this repo does NOT contain" below before relying on this in
-production.
+### AgentSmartWallet
 
----
+`AgentSmartWallet` provides wallet custody for executions that move native value.
 
-# Problem
+For wallet-custody execution, the value is taken from the configured SmartWallet.
 
-AI agents will increasingly control wallets, execute trades, manage assets and interact with smart contracts.
+The SmartWallet checks that execution comes through its configured Guard.
 
-Current wallet systems have a critical limitation:
+### AgentRegistry
 
-> If an AI agent key is compromised, there is no native security layer between the agent and user funds.
+`AgentRegistry` handles agent registration and lifecycle operations including activation, deactivation, ownership transfer and recovery controls.
 
-Agent Guardian introduces a programmable security boundary between AI agents and blockchain execution.
+### PolicyRegistry
 
----
+`PolicyRegistry` stores the execution policies used by the Guard.
 
-# Solution
+Policies can restrict:
 
-Agent Guardian separates identity, policy, and execution into three contracts:
-
-```
-AI Agent
-   |
-   v
-AgentExecutionGuard  <-- every transaction passes through here
-   |
-   +------------------+
-   |                  |
-   v                  v
-AgentRegistry    PolicyRegistry
-   |
-   v
-Recovery Guardian (owner-controlled emergency disable)
-```
-
-The agent never receives unrestricted wallet control. Every execution is checked against:
-
-- registered agent identity
-- active status
-- owner authorization
-- policy permissions
-- spending limits
-- nonce protection
-- emergency recovery state
-
----
-
-# Core Components
-
-## AgentRegistry
-
-Responsible for:
-- agent identity lifecycle
-- registration
-- activation/deactivation
-- ownership transfer
-- recovery guardian controls
-
-Security properties:
-- EIP-712 signed registration
-- anti-front-running protection
-- immutable agent identity binding
-- accepts both EOA and ERC-1271 (contract/AA/TEE-signer) agent identities
-
-## PolicyRegistry
-
-Defines what an agent is allowed to do. Policies include:
-- allowed contracts
-- allowed function selectors
+- target contracts
+- function selectors
 - maximum transaction value
-- daily spending limit
-- owner-approval threshold
+- daily spending
+- owner approval thresholds
 - validity period
-- native transfer permissions
+- native transfer targets
 
-Example:
+## HTTP API
 
-```
-Agent can:
-  call Uniswap router
-  spend max 0.1 ETH per transaction
-  spend max 1 ETH per day
-  only during the policy's active period
+The repository contains a small HTTP API in `api/app.ts`.
 
-Agent cannot:
-  transfer unlimited funds
-  call unauthorized contracts
-  bypass daily limits or owner-approval thresholds
-```
+### GET /health
 
-## AgentExecutionGuard
+Returns a basic health response.
 
-The execution firewall. Before every transaction it:
+### POST /v1/intent/prepare
 
-1. verifies the agent's signature (EOA or ERC-1271)
-2. checks the nonce and deadline
-3. verifies the agent is active and not paused
-4. verifies policy ownership and authorization for the exact (target, selector) pair
-5. checks the daily spending limit and, above the policy's approval threshold, requires a fresh owner-signed approval
-6. executes the transaction
+Accepts a ToolRequest, resolves the registered tool definition and returns:
 
-The Guard never accepts `msg.value` under any circumstance (`GuardMustNotReceiveValue`) and has no `receive`/`fallback` — it never holds a balance of its own. This gives two distinct entry points, not two interchangeable "funding models":
-- **Function-call-only** (`execute` / `executeWithApproval`): `value` must be `0`. Any attempt to pass `value > 0` reverts explicitly with `NativeTransferRequiresWalletCustody` — these exist for calling functions that don't move native ETH.
-- **Wallet-custody** (`executeFromWallet` / `executeWithApprovalFromWallet`): the only way to move native value. It is drawn from an `AgentSmartWallet` the owner deploys and funds ahead of time. `AgentSmartWallet.execute` only accepts calls from the specific Guard it was deployed with — a wallet pointed at a different Guard fails closed.
+- the transaction intent
+- EIP-712 typed data
+- the intent digest
 
-Protection against:
-- replay attacks
-- modified calldata
-- unauthorized targets/selectors
-- unauthorized policies
-- cross-chain and cross-contract replay
+The target is taken from the registered tool definition.
+
+### POST /v1/intent/preflight
+
+Accepts an intent and its signature.
+
+The API calls the configured preflight function. In the integration demo this is a static call to the real AgentExecutionGuard.
+
+A successful check returns an ALLOW decision.
+
+A Guard revert is returned as a BLOCK decision with the error reason.
+
+### POST /v1/intent/execute
+
+Accepts the signed intent and sends it through the configured Guard executor.
+
+A successful execution returns the transaction hash.
+
+## API demo
+
+`scripts/cwf-api-demo.ts` runs the API flow against freshly deployed local contracts.
+
+It demonstrates three cases.
+
+### 1. Allowed execution
+
+The agent requests `record(123)`.
+
+The request is prepared, signed, preflighted and executed.
+
+### 2. Calldata changed after signing
+
+The signed request contains `record(123)`.
+
+The submitted calldata is changed to `record(999)`.
+
+The Guard rejects the modified intent because the calldata no longer matches the signed data.
+
+### 3. Target outside the policy
+
+The agent creates a valid signature for another target.
+
+The policy does not authorize that target, so the Guard rejects the execution.
+
+These cases are demonstrated by the API and Guard integration test.
+
+Run the demo with:
+
+`npx hardhat run scripts/cwf-api-demo.ts`
+
+## Security tests
+
+The Solidity and Hardhat suite currently reports:
+
+**178 passing**
+
+The tests cover adversarial cases including:
+
+- nonce replay
+- stale and future nonces
+- target substitution
+- calldata modification
+- value modification
+- deadline modification
+- policy substitution
+- cross-chain replay
+- cross-contract replay
 - reentrancy
+- inactive agents
+- policy-owner mismatch
+- selector and target authorization
+- maximum transaction value
+- daily spending limits
+- owner approval thresholds
+- SmartWallet custody
+- ERC-1271 signatures
+- recovery controls
 
----
+CWF runtime and API tests are located in:
 
-# Recovery Guardian
+- `runtime-test/`
+- `api-test/`
 
-Gate 6 introduces emergency recovery controls. A trusted guardian can disable a compromised agent immediately, independent of the agent's own key.
+Run the complete test suite with:
 
----
+`npm test`
 
-# Security Testing
+Run only the contract tests:
 
-Current test suite: **178 passing** (`npx hardhat test`), including adversarial scenarios (replay, cross-chain/cross-contract replay, reentrancy, nonce boundaries, privilege-escalation regressions, ERC-1271 owner and agent signatures, wallet-custody fund movement, daily-limit and approval-threshold enforcement).
+`npm run test:contracts`
 
-Implemented security gates:
-- Gate 4A — Call authorization
-- Gate 4B — Spending limits and owner approvals
-- Gate 5 — Emergency pause controls
-- Gate 6 — Recovery Guardian controls
-- Gate 7 — AgentSmartWallet custody wiring + ERC-1271 agent identity
+Run only the CWF runtime and API tests:
 
-**Honest limitations, not yet closed:**
-- No Foundry/Echidna property-based fuzzing has been run — the `*.fuzz.test.ts` files are seeded pseudo-random JS loops, not a real fuzzer. See `docs/gate-2-execution-guard.md` section 5 for why, and the CI `static-analysis`/`coverage` jobs for where a real fuzzer would plug in.
-- Static analysis (Slither) is wired into CI (`.github/workflows/ci.yml`) but has not yet been run against this exact commit and reviewed.
-- Coverage (`npm run coverage`) is wired into CI but the resulting percentage has not yet been reviewed for gaps.
+`npm run test:cwf`
 
----
+## Arbitrum Sepolia
 
-# What this repo does NOT contain
+The repository contains a recorded deployment on Arbitrum Sepolia.
 
-To be direct about scope, since it matters for anyone evaluating this for production use:
-- **No off-chain AI/risk-scoring service.** `docs/protocol-spec.md` describes a planned "Guardian intelligence" advisory layer (risk, reputation, simulation, threat intelligence); it is not implemented in this repository. Every enforcement decision made by the contracts here is deterministic, not AI-derived.
-- **No Robinhood Chain deployment.** Mentioned as a planned target in `docs/protocol-spec.md` / `docs/project-lineage.md`; there is no network configuration, deployment, or address for it yet. The only live deployment is Arbitrum Sepolia.
-- **No SDK, monitoring dashboard, or agent connectors.** These are Phase 2 items, not built.
+Network: Arbitrum Sepolia
 
----
+Chain ID: 421614
 
-# Deployment
+Deployment addresses are stored in:
 
-Network: Arbitrum Sepolia (chain ID 421614).
+`deployments.json`
 
-Addresses are tracked in a single place, [`deployments.json`](./deployments.json), generated by `scripts/deploy.ts` — not copy-pasted into this README or into `docs/hackathon/`, so it can't silently drift out of sync the way it has in the past. Check that file for the current, network-keyed record; if you find a different address anywhere else in this repo's docs, `deployments.json` is the one to trust, and the other one should be reported as a bug.
+## Local development
 
----
+Install dependencies:
 
-# Local Development
-
-Install:
-
-```bash
-npm install
-```
+`npm install`
 
 Compile:
 
-```bash
-npm run compile
-```
+`npm run compile`
 
-Run tests:
+Run all tests:
 
-```bash
-npm test
-```
+`npm test`
 
 Run coverage:
 
-```bash
-npm run coverage
-```
+`npm run coverage`
 
-Deploy (also deploys and wires an example `AgentSmartWallet`, and writes `deployments.json`):
+Run the API demo:
 
-```bash
-npx hardhat run scripts/deploy.ts --network arbitrumSepolia
-```
+`npx hardhat run scripts/cwf-api-demo.ts`
 
----
+## Current scope
 
-# Vision
+The current repository implements the transaction security boundary between an autonomous agent request and blockchain execution.
 
-Agent Guardian is designed as a security layer for the next generation of autonomous agents. As AI agents become financial actors, they need identity, permissions, limits, and recovery mechanisms. This repository is the deterministic on-chain half of that; the off-chain risk-advisory half is future work (see "What this repo does NOT contain").
+It does not currently include:
+
+- an off-chain AI risk-scoring engine
+- a monitoring dashboard
+- a production SDK
+- a large external connector ecosystem
+
+The authorization decision that reaches the blockchain is enforced by the deterministic Guard and its configured policy.
+
+## Status
+
+Active hackathon codebase.
+
+The current focus is the security boundary between an agent request and the final blockchain transaction.
