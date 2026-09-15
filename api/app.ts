@@ -4,17 +4,24 @@ import {
   EXECUTION_INTENT_TYPES,
   buildIntentDomain,
   intentDigest,
+  TransactionIntent,
 } from "../runtime/intent";
 import {
   resolveToolRequest,
   ToolDefinition,
   ToolRequest,
 } from "../runtime/tool-request";
+import {
+  executeIntent,
+  ExecutionRequest,
+  GuardExecutor,
+} from "../runtime/executor";
 
 export type CwfApiContext = {
   tools: Map<string, ToolDefinition>;
   chainId: bigint;
   verifyingContract: string;
+  executor?: GuardExecutor;
 };
 
 function send(
@@ -108,16 +115,45 @@ function asToolRequest(value: unknown): ToolRequest {
   };
 }
 
-function serializeIntent(intent: {
-  agent: string;
-  wallet: string;
-  target: string;
-  value: bigint;
-  data: string;
-  nonce: bigint;
-  deadline: bigint;
-  policyHash: string;
-}) {
+function asExecutionIntent(
+  value: unknown,
+): TransactionIntent {
+  if (!value || typeof value !== "object") {
+    throw new Error("intent must be an object");
+  }
+
+  const input = value as Record<string, unknown>;
+
+  const requiredStrings = [
+    "agent",
+    "wallet",
+    "target",
+    "value",
+    "data",
+    "nonce",
+    "deadline",
+    "policyHash",
+  ];
+
+  for (const field of requiredStrings) {
+    if (typeof input[field] !== "string") {
+      throw new Error(`intent.${field} must be a string`);
+    }
+  }
+
+  return {
+    agent: input.agent as string,
+    wallet: input.wallet as string,
+    target: input.target as string,
+    value: BigInt(input.value as string),
+    data: input.data as string,
+    nonce: BigInt(input.nonce as string),
+    deadline: BigInt(input.deadline as string),
+    policyHash: input.policyHash as string,
+  };
+}
+
+function serializeIntent(intent: TransactionIntent) {
   return {
     agent: intent.agent,
     wallet: intent.wallet,
@@ -129,6 +165,14 @@ function serializeIntent(intent: {
     deadline: intent.deadline.toString(),
     policyHash: intent.policyHash,
   };
+}
+
+function validateSignature(value: unknown): string {
+  if (typeof value !== "string" || !ethers.isHexString(value)) {
+    throw new Error("signature must be hex");
+  }
+
+  return value;
 }
 
 export function createCwfApiHandler(context: CwfApiContext) {
@@ -182,9 +226,7 @@ export function createCwfApiHandler(context: CwfApiContext) {
 
         send(res, 200, {
           ok: true,
-
           intent: serializeIntent(intent),
-
           typedData: {
             domain: {
               name: domain.name,
@@ -205,8 +247,51 @@ export function createCwfApiHandler(context: CwfApiContext) {
               policyHash: intent.policyHash,
             },
           },
-
           digest,
+        });
+
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        req.url === "/v1/intent/execute"
+      ) {
+        if (!context.executor) {
+          send(res, 503, {
+            ok: false,
+            error: "execution_not_configured",
+          });
+          return;
+        }
+
+        const body = await readJson(req);
+
+        if (!body || typeof body !== "object") {
+          throw new Error("request body must be an object");
+        }
+
+        const input = body as Record<string, unknown>;
+
+        const intent = asExecutionIntent(input.intent);
+        const signature = validateSignature(input.signature);
+
+        const request: ExecutionRequest = {
+          intent,
+          signature,
+        };
+
+        const result = await executeIntent(
+          context.executor,
+          request,
+        );
+
+        send(res, 200, {
+          ok: true,
+          transactionHash:
+            result?.hash ??
+            result?.transactionHash ??
+            null,
         });
 
         return;
@@ -229,3 +314,4 @@ export function createCwfApiHandler(context: CwfApiContext) {
     }
   };
 }
+
