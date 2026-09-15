@@ -203,6 +203,56 @@ describe("CWF HTTP API -> real Guard", function () {
         chainId: network.chainId,
         verifyingContract: await guard.getAddress(),
         executor: guardExecutor,
+
+        preflight: async (request) => {
+          try {
+            await guard.connect(relayer).executeFromWallet.staticCall(
+              request.intent.agent,
+              request.intent.wallet,
+              request.intent.target,
+              request.intent.value,
+              request.intent.data,
+              request.intent.nonce,
+              request.intent.deadline,
+              request.intent.policyHash,
+              request.signature,
+            );
+          } catch (error: any) {
+            const data =
+              error?.data ??
+              error?.revert?.data ??
+              error?.info?.error?.data;
+
+            if (data) {
+              try {
+                const parsed = guard.interface.parseError(data);
+
+                if (parsed) {
+                  throw new Error(parsed.name);
+                }
+              } catch (parseError) {
+                if (
+                  parseError instanceof Error &&
+                  parseError.message !== "unknown error"
+                ) {
+                  if (
+                    !parseError.message.startsWith(
+                      "Cannot read properties",
+                    )
+                  ) {
+                    throw parseError;
+                  }
+                }
+              }
+            }
+
+            throw new Error(
+              error?.shortMessage ??
+              error?.message ??
+              "simulation_reverted",
+            );
+          }
+        },
       }),
     );
 
@@ -242,6 +292,18 @@ describe("CWF HTTP API -> real Guard", function () {
         typedData.message,
       );
 
+      const preflightValid = await postJson(
+        `${baseUrl}/v1/intent/preflight`,
+        {
+          intent,
+          signature,
+        },
+      );
+
+      expect(preflightValid.response.ok).to.equal(true);
+      expect(preflightValid.body.ok).to.equal(true);
+      expect(preflightValid.body.decision).to.equal("ALLOW");
+
       const tamperedData =
         new ethers.Interface([
           "function record(uint256 amount)",
@@ -254,6 +316,21 @@ describe("CWF HTTP API -> real Guard", function () {
         ...intent,
         data: tamperedData,
       };
+
+      const tamperedPreflight = await postJson(
+        `${baseUrl}/v1/intent/preflight`,
+        {
+          intent: tamperedIntent,
+          signature,
+        },
+      );
+
+      expect(tamperedPreflight.response.ok).to.equal(true);
+      expect(tamperedPreflight.body.ok).to.equal(false);
+      expect(tamperedPreflight.body.decision).to.equal("BLOCK");
+      expect(tamperedPreflight.body.reason).to.equal(
+        "InvalidSignature",
+      );
 
       const tampered = await postJson(
         `${baseUrl}/v1/intent/execute`,
