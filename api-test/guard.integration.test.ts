@@ -79,6 +79,11 @@ describe("CWF HTTP API -> real Guard", function () {
     ).deploy();
     await target.waitForDeployment();
 
+    const forbiddenTarget = await (
+      await ethers.getContractFactory("RecordingTarget")
+    ).deploy();
+    await forbiddenTarget.waitForDeployment();
+
     const metadataHash = ethers.keccak256(
       ethers.toUtf8Bytes("cwf-api"),
     );
@@ -169,6 +174,22 @@ describe("CWF HTTP API -> real Guard", function () {
       },
     };
 
+    const forbiddenTool = {
+      tool: "forbidden-target",
+      action: "record",
+      target: await forbiddenTarget.getAddress(),
+      encode(args: readonly unknown[]) {
+        const iface = new ethers.Interface([
+          "function record(uint256 amount)",
+        ]);
+
+        return iface.encodeFunctionData(
+          "record",
+          [...args],
+        );
+      },
+    };
+
     const guardExecutor = {
       async executeFromWallet(
         agentAddress: string,
@@ -199,6 +220,7 @@ describe("CWF HTTP API -> real Guard", function () {
       createCwfApiHandler({
         tools: new Map([
           ["recording-target:record", tool],
+          ["forbidden-target:record", forbiddenTool],
         ]),
         chainId: network.chainId,
         verifyingContract: await guard.getAddress(),
@@ -303,6 +325,68 @@ describe("CWF HTTP API -> real Guard", function () {
       expect(preflightValid.response.ok).to.equal(true);
       expect(preflightValid.body.ok).to.equal(true);
       expect(preflightValid.body.decision).to.equal("ALLOW");
+
+      const forbiddenPrepare = await postJson(
+        `${baseUrl}/v1/intent/prepare`,
+        {
+          agent: agent.address,
+          wallet: await wallet.getAddress(),
+          tool: "forbidden-target",
+          action: "record",
+          args: [123],
+          value: "0",
+          nonce: "0",
+          deadline: deadline.toString(),
+          policyHash,
+        },
+      );
+
+      expect(forbiddenPrepare.response.ok).to.equal(true);
+      expect(forbiddenPrepare.body.ok).to.equal(true);
+
+      const forbiddenIntent =
+        forbiddenPrepare.body.intent;
+
+      const forbiddenTypedData =
+        forbiddenPrepare.body.typedData;
+
+      const forbiddenSignature =
+        await agent.signTypedData(
+          forbiddenTypedData.domain,
+          forbiddenTypedData.types,
+          forbiddenTypedData.message,
+        );
+
+      const forbiddenPreflight = await postJson(
+        `${baseUrl}/v1/intent/preflight`,
+        {
+          intent: forbiddenIntent,
+          signature: forbiddenSignature,
+        },
+      );
+
+      expect(forbiddenPreflight.response.ok).to.equal(true);
+      expect(forbiddenPreflight.body.ok).to.equal(false);
+      expect(forbiddenPreflight.body.decision).to.equal("BLOCK");
+
+      const forbiddenExecute = await postJson(
+        `${baseUrl}/v1/intent/execute`,
+        {
+          intent: forbiddenIntent,
+          signature: forbiddenSignature,
+        },
+      );
+
+      expect(forbiddenExecute.response.ok).to.equal(false);
+      expect(forbiddenExecute.body.ok).to.equal(false);
+
+      expect(
+        await forbiddenTarget.callCount(),
+      ).to.equal(0n);
+
+      expect(
+        await guard.nextNonce(agent.address),
+      ).to.equal(0n);
 
       const tamperedData =
         new ethers.Interface([
