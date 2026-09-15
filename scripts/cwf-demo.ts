@@ -4,9 +4,26 @@ import {
   defineContractTool,
   resolveToolRequest,
 } from "../runtime/tool-request";
-import { signIntent } from "../runtime/intent";
+import {
+  signIntent,
+  canonicalizeIntent,
+} from "../runtime/intent";
 
 const FAR_FUTURE = 4102444800n;
+
+const approvalTypes = {
+  ExecutionApproval: [
+    { name: "agent", type: "address" },
+    { name: "wallet", type: "address" },
+    { name: "target", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "calldataHash", type: "bytes32" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "policyHash", type: "bytes32" },
+    { name: "approvalDeadline", type: "uint256" },
+  ],
+};
 
 function header(title: string) {
   console.log("");
@@ -32,6 +49,7 @@ function decodeRevert(guard: any, error: any): string {
   if (typeof data === "string") {
     try {
       const parsed = guard.interface.parseError(data);
+
       if (parsed) {
         return parsed.name;
       }
@@ -43,16 +61,46 @@ function decodeRevert(guard: any, error: any): string {
   return error?.shortMessage ?? error?.message ?? "Unknown error";
 }
 
+async function expectRevert(
+  guard: any,
+  action: Promise<unknown>,
+  expectedReason: string,
+  label: string,
+) {
+  try {
+    await action;
+
+    console.log(`  ERROR: ${label} was unexpectedly accepted`);
+    process.exitCode = 1;
+    throw new Error(`${label} should have reverted`);
+  } catch (error: any) {
+    const reason = decodeRevert(guard, error);
+
+    if (reason !== expectedReason) {
+      console.log(
+        `  ERROR: ${label} reverted with ${reason}, expected ${expectedReason}`,
+      );
+      process.exitCode = 1;
+      throw error;
+    }
+
+    blocked(`${label} rejected`);
+    console.log("  Reason:", reason);
+  }
+}
+
 async function main() {
   const [owner, relayer] = await ethers.getSigners();
 
   header("CWF — AI AGENT EXECUTION SECURITY DEMO");
 
   console.log("Security boundary:");
-  console.log("  ToolRequest -> Intent -> Signature -> Policy -> Guard -> Target");
+  console.log(
+    "  ToolRequest -> Intent -> Signature -> Policy -> Guard -> Wallet -> Target",
+  );
 
   // ------------------------------------------------------------------
-  // Deploy local demo stack
+  // Deploy stack
   // ------------------------------------------------------------------
 
   header("1. Deploying security stack");
@@ -100,6 +148,7 @@ async function main() {
   console.log("  AgentSmartWallet:   ", await wallet.getAddress());
   console.log("  Target A:           ", await targetA.getAddress());
   console.log("  Target B:           ", await targetB.getAddress());
+  console.log("  Native recipient:   ", owner.address);
 
   // ------------------------------------------------------------------
   // Register agent
@@ -151,10 +200,10 @@ async function main() {
   );
 
   // ------------------------------------------------------------------
-  // Create policy
+  // Policy
   // ------------------------------------------------------------------
 
-  header("3. Creating exact execution policy");
+  header("3. Creating execution policy");
 
   const salt = ethers.keccak256(
     ethers.toUtf8Bytes("cwf-demo-policy"),
@@ -165,13 +214,17 @@ async function main() {
   const targetAAddress = await targetA.getAddress();
   const targetBAddress = await targetB.getAddress();
 
+  const maxTxValue = ethers.parseEther("1");
+  const dailyLimit = ethers.parseEther("1");
+  const approvalThreshold = ethers.parseEther("0.5");
+
   await (
     await policyRegistry.connect(owner).createPolicy(
       salt,
       agent.address,
-      0n,
-      0n,
-      ethers.parseEther("1"),
+      maxTxValue,
+      dailyLimit,
+      approvalThreshold,
       0n,
       FAR_FUTURE,
       [
@@ -184,7 +237,7 @@ async function main() {
           selector: recordSelector,
         },
       ],
-      [],
+      [owner.address],
     )
   ).wait();
 
@@ -195,14 +248,49 @@ async function main() {
 
   const policyHash = await policyRegistry.policyHashOf(policyId);
 
-  console.log("  Authorized target A:", targetAAddress);
-  console.log("  Authorized target B:", targetBAddress);
-  console.log("  Authorized action: record(uint256)");
-  console.log("  Selector:           ", recordSelector);
-  console.log("  Policy hash:        ", policyHash);
+  console.log("  Target A authorized: ", targetAAddress);
+  console.log("  Target B authorized: ", targetBAddress);
+  console.log("  Native recipient:    ", owner.address);
+  console.log("  Max tx value:        ", ethers.formatEther(maxTxValue), "ETH");
+  console.log("  Daily limit:         ", ethers.formatEther(dailyLimit), "ETH");
+  console.log(
+    "  Approval threshold:  ",
+    ethers.formatEther(approvalThreshold),
+    "ETH",
+  );
+  console.log("  Policy hash:         ", policyHash);
 
   // ------------------------------------------------------------------
-  // Build tool definitions
+  // Fund wallet
+  // ------------------------------------------------------------------
+
+  header("4. Funding AgentSmartWallet");
+
+  await (
+    await owner.sendTransaction({
+      to: await wallet.getAddress(),
+      value: ethers.parseEther("2"),
+    })
+  ).wait();
+
+  console.log(
+    "  Wallet balance:",
+    ethers.formatEther(
+      await ethers.provider.getBalance(await wallet.getAddress()),
+    ),
+    "ETH",
+  );
+
+  console.log(
+    "  Guard balance:",
+    ethers.formatEther(
+      await ethers.provider.getBalance(await guard.getAddress()),
+    ),
+    "ETH",
+  );
+
+  // ------------------------------------------------------------------
+  // Tools
   // ------------------------------------------------------------------
 
   const toolA = defineContractTool(
@@ -220,12 +308,14 @@ async function main() {
   );
 
   // ------------------------------------------------------------------
-  // Scenario A — legitimate execution on target A
+  // Scenario A — normal function call
   // ------------------------------------------------------------------
 
-  header("4. Scenario A — legitimate AI request");
+  header("5. Scenario A — legitimate AI request");
 
   console.log("  AI proposal: target A -> record(42)");
+
+  const nonce0 = await guard.nextNonce(agent.address);
 
   const requestA = {
     agent: agent.address,
@@ -234,19 +324,12 @@ async function main() {
     action: "record",
     args: [42n],
     value: 0n,
-    nonce: 0n,
+    nonce: nonce0,
     deadline: FAR_FUTURE,
     policyHash,
   };
 
   const resolvedA = resolveToolRequest(toolA, requestA);
-
-  console.log("  Signed target:       ", resolvedA.intent.target);
-  console.log("  Calldata:            ", resolvedA.intent.data);
-  console.log(
-    "  Calldata hash:       ",
-    ethers.keccak256(resolvedA.intent.data),
-  );
 
   const signatureA = await signIntent(
     agent,
@@ -269,151 +352,308 @@ async function main() {
     )
   ).wait();
 
-  ok("Target A execution accepted");
-
-  console.log(
-    "  Target A call count: ",
-    (await targetA.callCount()).toString(),
-  );
-  console.log(
-    "  Target B call count: ",
-    (await targetB.callCount()).toString(),
-  );
+  ok("Target A function call accepted");
 
   // ------------------------------------------------------------------
   // Scenario B — calldata mutation
   // ------------------------------------------------------------------
 
-  header("5. Scenario B — attacker mutates signed calldata");
+  header("6. Scenario B — attacker mutates signed calldata");
 
-  console.log("  Signed:       target A -> record(42)");
-  console.log("  Attack:       target A -> record(999)");
+  const nonce1 = await guard.nextNonce(agent.address);
 
-  const attackRequest = {
+  const signedFor42 = resolveToolRequest(toolA, {
     agent: agent.address,
     wallet: await wallet.getAddress(),
     tool: "recording-target-a",
     action: "record",
     args: [42n],
     value: 0n,
-    nonce: 1n,
+    nonce: nonce1,
     deadline: FAR_FUTURE,
     policyHash,
-  };
+  });
 
-  const signedIntent = resolveToolRequest(
-    toolA,
-    attackRequest,
-  );
-
-  const attackSignature = await signIntent(
+  const signatureFor42 = await signIntent(
     agent,
-    signedIntent.intent,
+    signedFor42.intent,
     network.chainId,
     await guard.getAddress(),
   );
 
-  const modifiedData = toolA.encode([999n]);
+  const modifiedCalldata = toolA.encode([999n]);
 
-  try {
-    await guard.connect(relayer).executeFromWallet(
-      signedIntent.intent.agent,
-      signedIntent.intent.wallet,
-      signedIntent.intent.target,
-      signedIntent.intent.value,
-      modifiedData,
-      signedIntent.intent.nonce,
-      signedIntent.intent.deadline,
-      signedIntent.intent.policyHash,
-      attackSignature,
-    );
+  console.log("  Signed calldata:   ", signedFor42.intent.data);
+  console.log("  Modified calldata: ", modifiedCalldata);
 
-    console.log("  ERROR: modified calldata was accepted");
-    process.exitCode = 1;
-    return;
-  } catch (error: any) {
-    const reason = decodeRevert(guard, error);
-
-    if (reason !== "InvalidSignature") {
-      console.log(`  ERROR: unexpected rejection reason: ${reason}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    blocked("Calldata mutation rejected");
-    console.log("  Reason:", reason);
-  }
+  await expectRevert(
+    guard,
+    guard.connect(relayer).executeFromWallet(
+      signedFor42.intent.agent,
+      signedFor42.intent.wallet,
+      signedFor42.intent.target,
+      signedFor42.intent.value,
+      modifiedCalldata,
+      signedFor42.intent.nonce,
+      signedFor42.intent.deadline,
+      signedFor42.intent.policyHash,
+      signatureFor42,
+    ),
+    "InvalidSignature",
+    "Calldata mutation",
+  );
 
   // ------------------------------------------------------------------
-  // Scenario C1 — target substitution
+  // Scenario C — target substitution
   // ------------------------------------------------------------------
 
-  header("6. Scenario C1 — attacker substitutes target contract");
+  header("7. Scenario C — attacker substitutes target contract");
 
-  console.log("  Signed target:     Target A");
-  console.log("  Attack target:     Target B");
-  console.log("  Both are allowed by the policy.");
+  const nonce2 = await guard.nextNonce(agent.address);
 
-  const targetSwapRequest = {
+  const signedForTargetA = resolveToolRequest(toolA, {
     agent: agent.address,
     wallet: await wallet.getAddress(),
     tool: "recording-target-a",
     action: "record",
     args: [77n],
     value: 0n,
-    nonce: 1n,
+    nonce: nonce2,
     deadline: FAR_FUTURE,
     policyHash,
-  };
+  });
 
-  const signedTargetIntent = resolveToolRequest(
-    toolA,
-    targetSwapRequest,
-  );
-
-  const targetSwapSignature = await signIntent(
+  const signatureForTargetA = await signIntent(
     agent,
-    signedTargetIntent.intent,
+    signedForTargetA.intent,
     network.chainId,
     await guard.getAddress(),
   );
 
   const targetBData = toolB.encode([77n]);
 
-  try {
-    await guard.connect(relayer).executeFromWallet(
-      signedTargetIntent.intent.agent,
-      signedTargetIntent.intent.wallet,
+  console.log("  Signed target:", targetAAddress);
+  console.log("  Attack target:", targetBAddress);
+
+  await expectRevert(
+    guard,
+    guard.connect(relayer).executeFromWallet(
+      signedForTargetA.intent.agent,
+      signedForTargetA.intent.wallet,
       targetBAddress,
-      signedTargetIntent.intent.value,
+      0n,
       targetBData,
-      signedTargetIntent.intent.nonce,
-      signedTargetIntent.intent.deadline,
-      signedTargetIntent.intent.policyHash,
-      targetSwapSignature,
-    );
+      signedForTargetA.intent.nonce,
+      signedForTargetA.intent.deadline,
+      signedForTargetA.intent.policyHash,
+      signatureForTargetA,
+    ),
+    "InvalidSignature",
+    "Target substitution",
+  );
 
-    console.log("  ERROR: target substitution was accepted");
-    process.exitCode = 1;
-    return;
-  } catch (error: any) {
-    const reason = decodeRevert(guard, error);
+  // ------------------------------------------------------------------
+  // Scenario D — normal native transfer below threshold
+  // ------------------------------------------------------------------
 
-    if (reason !== "InvalidSignature") {
-      console.log(`  ERROR: unexpected rejection reason: ${reason}`);
-      process.exitCode = 1;
-      return;
-    }
+  header("8. Scenario D — native transfer below approval threshold");
 
-    blocked("Target substitution rejected by signed intent");
-    console.log("  Reason:", reason);
-  }
+  const transferValue = ethers.parseEther("0.4");
+  const nonce3 = await guard.nextNonce(agent.address);
+
+  const transferIntent = {
+    agent: agent.address,
+    wallet: await wallet.getAddress(),
+    target: owner.address,
+    value: transferValue,
+    data: "0x",
+    nonce: nonce3,
+    deadline: FAR_FUTURE,
+    policyHash,
+  };
+
+  canonicalizeIntent(transferIntent);
+
+  const transferSignature = await signIntent(
+    agent,
+    transferIntent,
+    network.chainId,
+    await guard.getAddress(),
+  );
+
+  const ownerBalanceBefore = await ethers.provider.getBalance(
+    owner.address,
+  );
+
+  await (
+    await guard.connect(relayer).executeFromWallet(
+      transferIntent.agent,
+      transferIntent.wallet,
+      transferIntent.target,
+      transferIntent.value,
+      transferIntent.data,
+      transferIntent.nonce,
+      transferIntent.deadline,
+      transferIntent.policyHash,
+      transferSignature,
+    )
+  ).wait();
+
+  const ownerBalanceAfter = await ethers.provider.getBalance(
+    owner.address,
+  );
+
+  ok("0.4 ETH transfer accepted without owner approval");
+
+  console.log(
+    "  Owner received:",
+    ethers.formatEther(ownerBalanceAfter - ownerBalanceBefore),
+    "ETH before gas effects",
+  );
+
+  // ------------------------------------------------------------------
+  // Scenario E — above threshold without approval
+  // ------------------------------------------------------------------
+
+  header("9. Scenario E — transfer above approval threshold");
+
+  const approvalTransferValue = ethers.parseEther("0.6");
+  const nonce4 = await guard.nextNonce(agent.address);
+
+  const approvalIntent = {
+    agent: agent.address,
+    wallet: await wallet.getAddress(),
+    target: owner.address,
+    value: approvalTransferValue,
+    data: "0x",
+    nonce: nonce4,
+    deadline: FAR_FUTURE,
+    policyHash,
+  };
+
+  canonicalizeIntent(approvalIntent);
+
+  const approvalIntentSignature = await signIntent(
+    agent,
+    approvalIntent,
+    network.chainId,
+    await guard.getAddress(),
+  );
+
+  await expectRevert(
+    guard,
+    guard.connect(relayer).executeFromWallet(
+      approvalIntent.agent,
+      approvalIntent.wallet,
+      approvalIntent.target,
+      approvalIntent.value,
+      approvalIntent.data,
+      approvalIntent.nonce,
+      approvalIntent.deadline,
+      approvalIntent.policyHash,
+      approvalIntentSignature,
+    ),
+    "ApprovalRequired",
+    "0.6 ETH transfer without owner approval",
+  );
+
+  // ------------------------------------------------------------------
+  // Scenario F — same transfer with owner approval
+  // ------------------------------------------------------------------
+
+  header("10. Scenario F — owner approves the high-value transfer");
+
+  const approvalDeadline = FAR_FUTURE;
+
+  const ownerApprovalSignature = await owner.signTypedData(
+    {
+      name: "AgentExecutionGuard",
+      version: "1",
+      chainId: network.chainId,
+      verifyingContract: await guard.getAddress(),
+    },
+    approvalTypes,
+    {
+      agent: approvalIntent.agent,
+      wallet: approvalIntent.wallet,
+      target: approvalIntent.target,
+      value: approvalIntent.value,
+      calldataHash: ethers.keccak256(approvalIntent.data),
+      nonce: approvalIntent.nonce,
+      deadline: approvalIntent.deadline,
+      policyHash: approvalIntent.policyHash,
+      approvalDeadline,
+    },
+  );
+
+  await (
+    await guard.connect(relayer).executeWithApprovalFromWallet(
+      approvalIntent.agent,
+      approvalIntent.wallet,
+      approvalIntent.target,
+      approvalIntent.value,
+      approvalIntent.data,
+      approvalIntent.nonce,
+      approvalIntent.deadline,
+      approvalIntent.policyHash,
+      approvalIntentSignature,
+      approvalDeadline,
+      ownerApprovalSignature,
+    )
+  ).wait();
+
+  ok("0.6 ETH transfer accepted after owner approval");
+
+  // ------------------------------------------------------------------
+  // Scenario G — daily limit exhausted
+  // ------------------------------------------------------------------
+
+  header("11. Scenario G — daily limit enforcement");
+
+  console.log("  Successful native spend: 0.4 + 0.6 = 1.0 ETH");
+  console.log("  Policy daily limit:      1.0 ETH");
+  console.log("  Next request:            0.1 ETH");
+
+  const dailyLimitIntent = {
+    agent: agent.address,
+    wallet: await wallet.getAddress(),
+    target: owner.address,
+    value: ethers.parseEther("0.1"),
+    data: "0x",
+    nonce: await guard.nextNonce(agent.address),
+    deadline: FAR_FUTURE,
+    policyHash,
+  };
+
+  const dailyLimitSignature = await signIntent(
+    agent,
+    dailyLimitIntent,
+    network.chainId,
+    await guard.getAddress(),
+  );
+
+  await expectRevert(
+    guard,
+    guard.connect(relayer).executeFromWallet(
+      dailyLimitIntent.agent,
+      dailyLimitIntent.wallet,
+      dailyLimitIntent.target,
+      dailyLimitIntent.value,
+      dailyLimitIntent.data,
+      dailyLimitIntent.nonce,
+      dailyLimitIntent.deadline,
+      dailyLimitIntent.policyHash,
+      dailyLimitSignature,
+    ),
+    "DailyLimitExceeded",
+    "Daily limit overflow",
+  );
 
   // ------------------------------------------------------------------
   // Final state
   // ------------------------------------------------------------------
 
-  header("7. Final security state");
+  header("12. Final security state");
 
   console.log(
     "  Target A successful calls:",
@@ -447,7 +687,7 @@ async function main() {
   );
 
   console.log("");
-  console.log("  RESULT: TARGET + CALLDATA BINDING VERIFIED");
+  console.log("  RESULT: POLICY + SIGNATURE SECURITY VERIFIED");
   console.log("");
 }
 
