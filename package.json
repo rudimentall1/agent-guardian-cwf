@@ -1,7 +1,7 @@
 {
-  "name": "agent-guardian-arbitrum",
-  "version": "1.0.0",
-  "description": "Security infrastructure for autonomous financial agents on Arbitrum. Deployed on Arbitrum Sepolia; Robinhood Chain support is planned, not yet implemented.",
+  "name": "agent-guardian-cwf",
+  "version": "0.1.0",
+  "description": "Security infrastructure for autonomous AI agents: policy enforcement, transaction simulation, and on-chain wallet protection.",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -10,19 +10,27 @@
     "compile": "hardhat clean && hardhat compile",
     "test": "hardhat test",
     "test:hardhat": "hardhat test",
+    "test:cwf:intent": "hardhat test runtime-test/intent.test.ts",
     "coverage": "hardhat coverage"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rudimentall1/agent-guardian-arbitrum.git"
+    "url": "git+https://github.com/rudimentall1/agent-guardian-cwf.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "ai-agents",
+    "agent-security",
+    "web3",
+    "arbitrum",
+    "smart-wallet",
+    "security-infrastructure"
+  ],
+  "author": "Rudimentall",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/rudimentall1/agent-guardian-arbitrum/issues"
+    "url": "https://github.com/rudimentall1/agent-guardian-cwf/issues"
   },
-  "homepage": "https://github.com/rudimentall1/agent-guardian-arbitrum#readme",
+  "homepage": "https://github.com/rudimentall1/agent-guardian-cwf#readme",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/node": "^22.20.1",
