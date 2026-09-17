@@ -90,11 +90,11 @@ The execution paths use reentrancy protection, and the test suite contains expli
 
 ### Risk
 
-An execution is pointed at a SmartWallet controlled by a different Guard.
+An execution is pointed at a different wallet, a wallet bound to another agent, or a wallet controlled by a different Guard.
 
 ### Protection
 
-`AgentSmartWallet` is bound to its specific Guard and rejects execution requests from another Guard.
+`AgentRegistry` records exactly one canonical wallet for each agent. `AgentSmartWallet` permanently records its agent identity, while the Guard verifies the canonical wallet, wallet agent, current owner and configured Guard before execution. A second wallet cannot be substituted by merely signing its address.
 
 ## Threat 8: Owner access is compromised
 

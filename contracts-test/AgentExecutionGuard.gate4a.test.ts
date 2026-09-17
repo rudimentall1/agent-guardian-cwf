@@ -151,7 +151,8 @@ describe("Gate 4A: call authorization and maxTxValue вЂ” full stack", functi
     policyRegistry = await PolicyRegistry.deploy(); await policyRegistry.waitForDeployment();
     const Guard = await ethers.getContractFactory("AgentExecutionGuard");
     guard = await Guard.deploy(await agentRegistry.getAddress(), await policyRegistry.getAddress()); await guard.waitForDeployment(); guardAddress = await guard.getAddress();
-    wallet = await deploySmartWallet(owner.address, guardAddress);
+    wallet = await deploySmartWallet(owner.address, guardAddress, agent.address);
+    await agentRegistry.bindWallet(agent.address, await wallet.getAddress());
     await owner.sendTransaction({
       to: await wallet.getAddress(),
       value: ethers.parseEther("10"),

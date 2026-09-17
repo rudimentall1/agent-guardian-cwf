@@ -58,7 +58,7 @@ The Guard validates the agent, signature, nonce, deadline, policy, exact target 
 
 ### AgentSmartWallet
 
-Holds funds used by wallet-custody execution. The wallet is tied to its Guard and rejects execution requests from another Guard.
+Holds funds used by wallet-custody execution. The wallet is immutably tied to one agent and one Guard, while `AgentRegistry` records exactly one canonical wallet per agent. The Guard verifies those bindings and the wallet's current owner before execution.
 
 The Guard itself does not hold the user's funds.
 
@@ -88,14 +88,9 @@ The demo then shows the owner pause path and the separate recovery guardian path
 
 ## Testing
 
-The current suite has **178 passing tests**.
+The current suite has **196 passing tests**.
 
-Coverage from the current local run:
-
-- Statements: **95.48%**
-- Lines: **93.63%**
-- Functions: **92.42%**
-- Branches: **77.55%**
+Coverage is configured in CI; the percentages are intentionally not hard-coded here because the suite has changed since the last recorded coverage snapshot.
 
 The tests include replay protection, calldata and field mutation, exact target and selector authorization, spending limits, owner approvals, reentrancy, ERC-1271 identities, wallet custody and recovery scenarios.
 
@@ -103,7 +98,7 @@ GitHub Actions also runs compile and tests, coverage and Slither. The latest suc
 
 ## Deployment
 
-The current deployment is on **Arbitrum Sepolia**, chain ID `421614`.
+The deployment target is **Arbitrum Sepolia**, chain ID `421614`. The recorded addresses predate the current canonical wallet-binding contract changes and require redeployment before final submission.
 
 Contract addresses are stored in [`deployments.json`](../../deployments.json).
 

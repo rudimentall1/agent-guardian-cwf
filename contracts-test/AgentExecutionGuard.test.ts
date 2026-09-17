@@ -158,9 +158,11 @@ describe("AgentExecutionGuard", function () {
     await guard.waitForDeployment();
     guardAddress = await guard.getAddress();
 
-    walletA = await deploySmartWallet(agentA.address, guardAddress);
-    walletB = await deploySmartWallet(agentB.address, guardAddress);
-    walletAlias = await deploySmartWallet(agentA.address, guardAddress);
+    walletA = await deploySmartWallet(agentA.address, guardAddress, agentA.address);
+    walletB = await deploySmartWallet(agentB.address, guardAddress, agentB.address);
+    walletAlias = await deploySmartWallet(agentA.address, guardAddress, agentA.address);
+    await registry.setWallet(agentA.address, await walletA.getAddress());
+    await registry.setWallet(agentB.address, await walletB.getAddress());
   });
 
   describe("happy path", function () {

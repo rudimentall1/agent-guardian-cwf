@@ -72,7 +72,9 @@ The implementation supports EOA and ERC-1271 signatures.
 
 For wallet-custody execution, the value is taken from the configured SmartWallet.
 
-The SmartWallet checks that execution comes through its configured Guard.
+Each agent has one canonical wallet recorded by `AgentRegistry`. The wallet itself is immutably bound to that agent, and the Guard checks the live wallet owner and Guard binding before custody execution.
+
+The SmartWallet also checks that execution comes through its configured Guard.
 
 ### AgentRegistry
 
@@ -162,7 +164,7 @@ Run the demo with:
 
 The Solidity and Hardhat suite currently reports:
 
-**178 passing**
+**196 passing**
 
 The tests cover adversarial cases including:
 
@@ -205,7 +207,7 @@ Run only the CWF runtime and API tests:
 
 ## Arbitrum Sepolia
 
-The repository contains a recorded deployment on Arbitrum Sepolia.
+The repository contains a recorded Arbitrum Sepolia deployment from an earlier contract version. It must be redeployed after the canonical wallet-binding security fix before being presented as the current deployment.
 
 Network: Arbitrum Sepolia
 

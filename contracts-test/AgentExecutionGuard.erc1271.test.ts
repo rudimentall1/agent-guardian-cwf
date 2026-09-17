@@ -38,7 +38,9 @@ describe("ERC-1271 contract owner approvals — adversarial", function () {
     await policyRegistry.waitForDeployment();
     const guard = await (await ethers.getContractFactory("AgentExecutionGuard")).deploy(await registry.getAddress(), await policyRegistry.getAddress());
     await guard.waitForDeployment();
-    const wallet = await deploySmartWallet(await contractOwner.getAddress(), await guard.getAddress());
+    const wallet = await deploySmartWallet(await contractOwner.getAddress(), await guard.getAddress(), agent.address);
+    const bindData = registry.interface.encodeFunctionData("bindWallet", [agent.address, await wallet.getAddress()]);
+    await contractOwner.execute(await registry.getAddress(), bindData);
     await fundSmartWallet(wallet, ethers.parseEther("10"));
     const target = await (await ethers.getContractFactory("RecordingTarget")).deploy();
     await target.waitForDeployment();

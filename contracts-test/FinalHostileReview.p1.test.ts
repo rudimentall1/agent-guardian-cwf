@@ -127,7 +127,8 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     guard = await Guard.deploy(agentRegistryAddress, policyRegistryAddress);
     await guard.waitForDeployment();
     guardAddress = await guard.getAddress();
-    wallet = await deploySmartWallet(ownerA.address, guardAddress);
+    wallet = await deploySmartWallet(ownerA.address, guardAddress, agentA.address);
+    await agentRegistry.bindWallet(agentA.address, await wallet.getAddress());
     await fundSmartWallet(wallet, ethers.parseEther("100"));
 
     const RecordingTarget = await ethers.getContractFactory("RecordingTarget");
@@ -176,7 +177,33 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     });
   });
 
-  // 3. Owner B creates Policy B for the same Agent A -> execute PASS.
+  // 3. A second wallet owned by the same owner and bound to the same agent
+  // must not become an alternate custody target. The registry's one-time
+  // canonical wallet binding is the load-bearing invariant here.
+  it("3. same owner + same agent + different wallet -> REVERT WalletNotCanonical", async function () {
+    const { policyHash } = await createPolicy(ownerA, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-canonical-wallet")));
+    const Wallet = await ethers.getContractFactory("AgentSmartWallet");
+    const secondWallet = await Wallet.deploy(ownerA.address, guardAddress, agentA.address);
+    await secondWallet.waitForDeployment();
+
+    const intent: Intent = {
+      agent: agentA.address,
+      wallet: await secondWallet.getAddress(),
+      target: targetAddress,
+      value: 0n,
+      data: "0x",
+      nonce: 0n,
+      deadline: FAR_DEADLINE,
+      policyHash,
+    };
+    const sig = await signIntent(agentA, intent);
+
+    await expect(submit(intent, sig))
+      .to.be.revertedWithCustomError(guard, "WalletNotCanonical")
+      .withArgs(await secondWallet.getAddress(), await wallet.getAddress(), agentA.address);
+  });
+
+  // 4. Owner B creates Policy B for the same Agent A -> execute PASS.
   it("3. Owner B creates Policy B for the same Agent A -> execute PASS", async function () {
     await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await wallet.connect(ownerA).transferOwnership(ownerB.address);

@@ -42,6 +42,7 @@ describe("CWF reusable intent executor", function () {
     ).deploy(
       owner.address,
       await guard.getAddress(),
+      agent.address,
     );
     await wallet.waitForDeployment();
 
@@ -87,6 +88,7 @@ describe("CWF reusable intent executor", function () {
         registrationSignature,
       )
     ).wait();
+    await registry.bindWallet(agent.address, await wallet.getAddress());
 
     const recordSelector = ethers.id(
       "record(uint256)",

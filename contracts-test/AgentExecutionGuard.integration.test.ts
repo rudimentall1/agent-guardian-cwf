@@ -110,7 +110,7 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
     guard = await Guard.deploy(registryAddress, policyRegistryAddress);
     await guard.waitForDeployment();
     guardAddress = await guard.getAddress();
-    wallet = await deploySmartWallet(owner.address, guardAddress);
+    wallet = await deploySmartWallet(owner.address, guardAddress, agent.address);
     await fundSmartWallet(wallet, ethers.parseEther("10"));
 
     const rd = await registrationDomain();
@@ -120,6 +120,7 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
       metadataHash: METADATA_HASH,
     });
     await registry.register(agent.address, owner.address, METADATA_HASH, regSig);
+    await registry.bindWallet(agent.address, await wallet.getAddress());
   });
 
   it("executes through the guard once genuinely registered and active", async function () {
@@ -191,6 +192,7 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
     it("the agent's signing key itself is unaffected by ownership transfer — a policy the NEW owner establishes works immediately with the SAME key", async function () {
       const sig = await signIntent(0n);
       await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
+      await wallet.connect(owner).transferOwnership(newOwner.address);
       await registry.connect(newOwner).reactivate(agent.address);
 
       // old policy: still correctly dead (see previous test)
@@ -220,6 +222,7 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
       expect(await guard.nextNonce(agent.address)).to.equal(2n);
 
       await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
+      await wallet.connect(owner).transferOwnership(newOwner.address);
       await registry.connect(newOwner).reactivate(agent.address);
       // [P1 fix] update the mock policy binding to the new owner so this
       // test continues to isolate nonce behavior specifically, rather

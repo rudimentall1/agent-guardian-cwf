@@ -19,18 +19,13 @@
 
 ## Tests and analysis
 
-- [x] 178 Hardhat tests passing
-- [x] Coverage run successfully
-- [x] Coverage reviewed for the current run
-- [x] Slither run successfully in CI
-- [x] No high-severity Slither finding blocking CI
-
-### Current coverage
-
-- Statements: **95.48%**
-- Lines: **93.63%**
-- Functions: **92.42%**
-- Branches: **77.55%**
+- [x] 183 contract tests passing
+- [x] 13 runtime/API tests passing
+- [x] 196 total tests passing
+- [ ] Coverage run successfully after the wallet-binding changes
+- [ ] Coverage reviewed for the current run
+- [ ] Slither rerun against the wallet-binding changes
+- [ ] No high-severity Slither finding blocking the current commit
 
 ### Testing scope
 
@@ -40,10 +35,10 @@ Real Foundry/Echidna fuzzing has not been run. The current `*.fuzz.test.ts` cove
 
 ## Deployment
 
-- [x] Arbitrum Sepolia deployment
-- [x] Deployment addresses recorded in `deployments.json`
+- [ ] Redeploy the current contract version to Arbitrum Sepolia
+- [ ] Record the new deployment addresses in `deployments.json`
 - [x] Demo video published
-- [x] Current demo matches the contract architecture
+- [ ] Verify the published demo and deployment use the same contract version
 
 Network: **Arbitrum Sepolia**
 
@@ -73,6 +68,8 @@ These items are future work. They are not presented as implemented features.
 
 **Technical prototype: READY**
 
-**Deployment and demo: READY**
+**Deployment: REDEPLOY REQUIRED after the wallet-binding security fix**
 
-**Documentation: READY after the final documentation update**
+**Local demo: VERIFIED**
+
+**Documentation: UPDATED for the wallet-binding security fix**

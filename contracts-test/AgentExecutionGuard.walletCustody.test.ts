@@ -101,9 +101,10 @@ describe("Gate 7: AgentSmartWallet custody + ERC-1271 agent identity", function 
     guardAddress = await guard.getAddress();
 
     const SmartWallet = await ethers.getContractFactory("AgentSmartWallet");
-    smartWallet = await SmartWallet.deploy(owner.address, guardAddress);
+    smartWallet = await SmartWallet.deploy(owner.address, guardAddress, agent.address);
     await smartWallet.waitForDeployment();
     smartWalletAddress = await smartWallet.getAddress();
+    await registry.setWallet(agent.address, smartWalletAddress);
   });
 
   describe("executeFromWallet: funds come from the wallet, not the caller", function () {
@@ -158,7 +159,7 @@ describe("Gate 7: AgentSmartWallet custody + ERC-1271 agent identity", function 
 
       await expect(
         rogueGuard.executeFromWallet(agent.address, smartWalletAddress, targetAddress, value, "0x", 0n, FAR_DEADLINE, ZERO_HASH, sig)
-      ).to.be.revertedWithCustomError(rogueGuard, "ExecutionFailed");
+      ).to.be.revertedWithCustomError(rogueGuard, "WalletNotBoundToThisGuard");
 
       // and the wallet's balance must be untouched
       expect(await ethers.provider.getBalance(smartWalletAddress)).to.equal(ethers.parseEther("1"));
@@ -206,10 +207,6 @@ describe("Gate 7: AgentSmartWallet custody + ERC-1271 agent identity", function 
       await realGuard.waitForDeployment();
       const realGuardAddress = await realGuard.getAddress();
 
-      const smartWallet = await deploySmartWallet(owner.address, realGuardAddress);
-      await fundSmartWallet(smartWallet, ethers.parseEther("1"));
-      const smartWalletAddress = await smartWallet.getAddress();
-
       // The "agent" identity is a contract; an underlying EOA key signs,
       // the contract's isValidSignature vouches for it (AA/TEE stand-in).
       const underlyingKey = ethers.Wallet.createRandom().connect(ethers.provider);
@@ -217,6 +214,10 @@ describe("Gate 7: AgentSmartWallet custody + ERC-1271 agent identity", function 
       const contractAgent = await MockERC1271Owner.deploy(underlyingKey.address);
       await contractAgent.waitForDeployment();
       const contractAgentAddress = await contractAgent.getAddress();
+
+      const smartWallet = await deploySmartWallet(owner.address, realGuardAddress, contractAgentAddress);
+      await fundSmartWallet(smartWallet, ethers.parseEther("1"));
+      const smartWalletAddress = await smartWallet.getAddress();
 
       const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("contract-agent-v1"));
       const net = await ethers.provider.getNetwork();
@@ -235,6 +236,7 @@ describe("Gate 7: AgentSmartWallet custody + ERC-1271 agent identity", function 
       });
 
       await realRegistry.register(contractAgentAddress, owner.address, metadataHash, regSig);
+      await realRegistry.bindWallet(contractAgentAddress, smartWalletAddress);
       expect(await realRegistry.isActiveAgent(contractAgentAddress)).to.equal(true);
 
       // owner authorizes a native-transfer policy bound to the contract agent

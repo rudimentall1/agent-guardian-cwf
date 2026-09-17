@@ -41,26 +41,80 @@ async function main() {
     guardAddress
   );
 
-  // AgentSmartWallet is the actual custody layer executeFromWallet /
-  // executeWithApprovalFromWallet route funds through. It is deployed
-  // and wired to this Guard here so a fresh deployment is immediately
-  // usable end-to-end, not a set of disconnected contracts that need
-  // manual post-deploy wiring. One example wallet is deployed for the
-  // deployer address; in production each owner gets their own.
-  const AgentSmartWallet = await ethers.getContractFactory("AgentSmartWallet");
-  const exampleWallet = await AgentSmartWallet.deploy(deployer.address, guardAddress);
-  await exampleWallet.waitForDeployment();
+  // A SmartWallet is meaningful only after an agent identity exists. For a
+  // reproducible end-to-end deployment, supply CWF_AGENT_PRIVATE_KEY; the
+  // derived agent is registered to the deployer, then its wallet is deployed
+  // and atomically bound as that agent's canonical custody wallet. Without an
+  // agent key, this script intentionally deploys only the core registries and
+  // Guard rather than creating a misleading unbound example wallet.
+  let exampleWallet: any = null;
+  let agentAddress: string | null = null;
 
-  console.log(
-    "AgentSmartWallet (example, owner = deployer):",
-    await exampleWallet.getAddress()
-  );
+  const agentPrivateKey = process.env.CWF_AGENT_PRIVATE_KEY;
+  if (agentPrivateKey) {
+    const agent = new ethers.Wallet(agentPrivateKey);
+    agentAddress = agent.address;
+
+    const metadataHash = process.env.CWF_AGENT_METADATA_HASH
+      ? ethers.hexlify(process.env.CWF_AGENT_METADATA_HASH)
+      : ethers.keccak256(ethers.toUtf8Bytes("agent-guardian-cwf"));
+
+    const networkInfo = await ethers.provider.getNetwork();
+    const registrationDomain = {
+      name: "AgentRegistry",
+      version: "1",
+      chainId: networkInfo.chainId,
+      verifyingContract: await agentRegistry.getAddress(),
+    };
+    const registrationTypes = {
+      AgentRegistration: [
+        { name: "agent", type: "address" },
+        { name: "owner", type: "address" },
+        { name: "metadataHash", type: "bytes32" },
+      ],
+    };
+    const registrationSignature = await agent.signTypedData(
+      registrationDomain,
+      registrationTypes,
+      { agent: agentAddress, owner: deployer.address, metadataHash },
+    );
+
+    await (await agentRegistry.register(
+      agentAddress,
+      deployer.address,
+      metadataHash,
+      registrationSignature,
+    )).wait();
+
+    const AgentSmartWallet = await ethers.getContractFactory("AgentSmartWallet");
+    exampleWallet = await AgentSmartWallet.deploy(
+      deployer.address,
+      guardAddress,
+      agentAddress,
+    );
+    await exampleWallet.waitForDeployment();
+
+    await (await agentRegistry.bindWallet(
+      agentAddress,
+      await exampleWallet.getAddress(),
+    )).wait();
+
+    console.log("Registered agent:", agentAddress);
+    console.log("AgentSmartWallet:", await exampleWallet.getAddress());
+  } else {
+    console.log("CWF_AGENT_PRIVATE_KEY not set: skipping wallet deployment; core stack only.");
+  }
 
   const result = {
     agentRegistry: await agentRegistry.getAddress(),
     policyRegistry: await policyRegistry.getAddress(),
     agentExecutionGuard: guardAddress,
-    exampleAgentSmartWallet: await exampleWallet.getAddress(),
+    ...(agentAddress && exampleWallet
+      ? {
+          agent: agentAddress,
+          exampleAgentSmartWallet: await exampleWallet.getAddress(),
+        }
+      : {}),
   };
 
   // Single source of truth for "what is actually deployed where" — keyed

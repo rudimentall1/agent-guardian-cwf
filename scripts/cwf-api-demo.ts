@@ -128,6 +128,7 @@ async function main() {
   ).deploy(
     owner.address,
     await guard.getAddress(),
+    agent.address,
   );
   await wallet.waitForDeployment();
 
@@ -201,6 +202,8 @@ async function main() {
       registrationSignature,
     )
   ).wait();
+
+  await registry.bindWallet(agent.address, await wallet.getAddress());
 
   console.log(
     "Agent active:",

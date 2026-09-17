@@ -18,6 +18,7 @@ contract MockAgentRegistry is IAgentRegistry {
     /// so tests that don't care about the P1 owner-authorization check
     /// get a matching pair without needing to think about it.
     mapping(address => address) private _owner;
+    mapping(address => address) private _wallet;
 
     function setActive(address agent, bool active_) external {
         _active[agent] = active_;
@@ -36,5 +37,13 @@ contract MockAgentRegistry is IAgentRegistry {
 
     function ownerOf(address agent) external view returns (address) {
         return _owner[agent];
+    }
+
+    function setWallet(address agent, address wallet) external {
+        _wallet[agent] = wallet;
+    }
+
+    function walletOf(address agent) external view returns (address) {
+        return _wallet[agent];
     }
 }

@@ -94,7 +94,7 @@ The Guard itself is not a wallet. It does not keep user funds.
 
 `AgentSmartWallet` is the custody layer for native assets used by agent execution.
 
-The wallet is bound to one specific `AgentExecutionGuard`. It rejects execution requests coming from another Guard.
+The wallet is immutably bound to one agent and one configured `AgentExecutionGuard`. `AgentRegistry` records one canonical wallet per agent, and the Guard verifies the canonical wallet, wallet agent identity, current owner, and Guard binding before custody execution.
 
 For wallet custody, the execution value is taken from the SmartWallet balance. The caller does not have to fund the transaction with the value being transferred.
 
@@ -105,14 +105,16 @@ The Guard also rejects direct ETH transfers to itself. This keeps custody in one
 A normal wallet-custody execution looks like this:
 
 1. The owner registers an agent.
-2. The owner creates a policy for that agent.
-3. The agent signs an execution intent.
-4. A relayer submits the signed intent to the Guard.
-5. The Guard checks the signature, nonce, deadline, policy and spending rules.
-6. If the value is above the approval threshold, the Guard also checks a fresh owner approval.
-7. The Guard asks the bound SmartWallet to fund the transaction.
-8. The target contract receives the call.
-9. The nonce and spending state are updated only when execution succeeds.
+2. The owner deploys a SmartWallet bound to that agent and binds it as the agent's canonical wallet.
+3. The owner creates a policy for that agent.
+4. The agent signs an execution intent.
+5. A relayer submits the signed intent to the Guard.
+6. The Guard checks the signature, nonce, deadline, policy and spending rules.
+7. If the value is above the approval threshold, the Guard also checks a fresh owner approval.
+8. The Guard verifies the canonical wallet and its live owner/agent/Guard bindings.
+9. The Guard asks the bound SmartWallet to fund the transaction.
+10. The target contract receives the call.
+11. The nonce and spending state are updated only when execution succeeds.
 
 ## Emergency controls
 

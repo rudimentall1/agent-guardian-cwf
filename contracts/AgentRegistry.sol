@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {IAgentSmartWallet} from "./interfaces/IAgentSmartWallet.sol";
+
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
@@ -65,6 +67,9 @@ contract AgentRegistry is EIP712 {
         bytes32 metadataHash;
         uint64 registeredAt;
         address recoveryAgent;
+        /// @notice Canonical custody wallet for this agent. Zero until the
+        /// current owner explicitly binds one. The binding is one-time.
+        address wallet;
     }
 
     /// @dev keccak256("AgentRegistration(address agent,address owner,bytes32 metadataHash)")
@@ -79,6 +84,7 @@ contract AgentRegistry is EIP712 {
     event AgentOwnershipTransferred(address indexed agent, address indexed previousOwner, address indexed newOwner);
     event RecoveryGuardianSet(address indexed agent, address indexed guardian);
     event RecoveryExecuted(address indexed agent, address indexed guardian);
+    event AgentWalletBound(address indexed agent, address indexed wallet, address indexed owner);
 
     error ZeroAddress();
     error AgentAlreadyRegistered(address agent);
@@ -89,6 +95,10 @@ contract AgentRegistry is EIP712 {
     error InvalidSignature();
     error SameOwner();
     error NotRecoveryGuardian(address agent, address caller);
+    error WalletAlreadyBound(address agent, address wallet);
+    error WalletNotContract(address wallet);
+    error WalletAgentMismatch(address wallet, address walletAgent, address expectedAgent);
+    error WalletOwnerMismatch(address wallet, address walletOwner, address expectedOwner);
 
     constructor() EIP712("AgentRegistry", "1") {}
 
@@ -112,7 +122,7 @@ contract AgentRegistry is EIP712 {
         // in docs/threat-model.md, "Gate 1 status".
         if (!SignatureChecker.isValidSignatureNow(agent, digest, signature)) revert InvalidSignature();
 
-        _agents[agent] = Agent({owner: owner, active: true, metadataHash: metadataHash, registeredAt: uint64(block.timestamp), recoveryAgent: address(0)});
+        _agents[agent] = Agent({owner: owner, active: true, metadataHash: metadataHash, registeredAt: uint64(block.timestamp), recoveryAgent: address(0), wallet: address(0)});
 
         emit AgentRegistered(agent, owner, metadataHash);
     }
@@ -173,6 +183,34 @@ contract AgentRegistry is EIP712 {
 
     function ownerOf(address agent) external view returns (address) {
         return _agents[agent].owner;
+    }
+
+    /// @notice Bind the agent to its canonical custody wallet. The binding
+    /// is immutable once set, so a compromised agent cannot switch the
+    /// execution target to another wallet. The owner may perform this only
+    /// while controlling the registered agent.
+    function bindWallet(address agent, address wallet) external {
+        Agent storage record = _agents[agent];
+        if (record.owner == address(0)) revert AgentNotRegistered(agent);
+        if (record.owner != msg.sender) revert NotAgentOwner(agent, msg.sender);
+        if (wallet == address(0)) revert ZeroAddress();
+        if (record.wallet != address(0)) revert WalletAlreadyBound(agent, record.wallet);
+        if (wallet.code.length == 0) revert WalletNotContract(wallet);
+
+        address walletAgent = IAgentSmartWallet(wallet).agent();
+        if (walletAgent != agent) revert WalletAgentMismatch(wallet, walletAgent, agent);
+
+        address walletOwner = IAgentSmartWallet(wallet).owner();
+        if (walletOwner != msg.sender) revert WalletOwnerMismatch(wallet, walletOwner, msg.sender);
+
+        record.wallet = wallet;
+        emit AgentWalletBound(agent, wallet, msg.sender);
+    }
+
+    /// @notice Return the canonical wallet bound to `agent`, or zero if the
+    /// owner has not completed wallet binding yet.
+    function walletOf(address agent) external view returns (address) {
+        return _agents[agent].wallet;
     }
 
 

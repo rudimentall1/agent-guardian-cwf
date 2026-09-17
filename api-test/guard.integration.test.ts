@@ -71,6 +71,7 @@ describe("CWF HTTP API -> real Guard", function () {
     ).deploy(
       owner.address,
       await guard.getAddress(),
+      agent.address,
     );
     await wallet.waitForDeployment();
 
@@ -121,6 +122,7 @@ describe("CWF HTTP API -> real Guard", function () {
         registrationSignature,
       )
     ).wait();
+    await registry.bindWallet(agent.address, await wallet.getAddress());
 
     const recordSelector = ethers.id(
       "record(uint256)",

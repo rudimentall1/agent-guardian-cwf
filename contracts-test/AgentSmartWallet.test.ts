@@ -8,7 +8,7 @@ describe("AgentSmartWallet: execution boundary", function () {
     const guard = await Guard.deploy(owner.address, owner.address);
     await guard.waitForDeployment();
     const Wallet = await ethers.getContractFactory("AgentSmartWallet");
-    const wallet = await Wallet.deploy(owner.address, await guard.getAddress());
+    const wallet = await Wallet.deploy(owner.address, await guard.getAddress(), owner.address);
     await wallet.waitForDeployment();
     const Target = await ethers.getContractFactory("RecordingTarget");
     const target = await Target.deploy();
@@ -22,7 +22,7 @@ describe("AgentSmartWallet: execution boundary", function () {
     const guard = await Guard.deploy(owner.address, owner.address);
     await guard.waitForDeployment();
     const Wallet = await ethers.getContractFactory("AgentSmartWallet");
-    const wallet = await Wallet.deploy(owner.address, await guard.getAddress());
+    const wallet = await Wallet.deploy(owner.address, await guard.getAddress(), owner.address);
     await wallet.waitForDeployment();
     await owner.sendTransaction({ to: await wallet.getAddress(), value: ethers.parseEther("1") });
     const before = await ethers.provider.getBalance(owner.address);

@@ -16,4 +16,7 @@ interface IAgentRegistry {
     /// docs/adr/0006-policy-owner-authorization.md for why this must be
     /// a live check, not a creation-time-only one.
     function ownerOf(address agent) external view returns (address);
+
+    /// @notice Canonical custody wallet bound to `agent`, or zero if none.
+    function walletOf(address agent) external view returns (address);
 }

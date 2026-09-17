@@ -20,7 +20,7 @@ describe("P1: PolicyRegistry policy-owner authorization", function () {
     const guard = await Guard.deploy(await registry.getAddress(), await policyRegistry.getAddress());
     await guard.waitForDeployment();
 
-    const smartWallet = await deploySmartWallet(owner.address, await guard.getAddress());
+    const smartWallet = await deploySmartWallet(owner.address, await guard.getAddress(), agentWallet.address);
     await fundSmartWallet(smartWallet, ethers.parseEther("100"));
 
     const RecordingTarget = await ethers.getContractFactory("RecordingTarget");
@@ -91,6 +91,7 @@ describe("P1: PolicyRegistry policy-owner authorization", function () {
   it("attacker can create a policy for someone else's agent, but the policy cannot obtain execution authority", async function () {
     const { registry, policyRegistry, guard, owner, attacker, agentWallet, smartWallet } = await loadFixture(deployFixture);
     await register(registry, agentWallet, owner);
+    await registry.connect(owner).bindWallet(agentWallet.address, await smartWallet.getAddress());
 
     const salt = ethers.keccak256(ethers.toUtf8Bytes("attacker-policy"));
     await policyRegistry.connect(attacker).createPolicy(
@@ -136,6 +137,7 @@ describe("P1: PolicyRegistry policy-owner authorization", function () {
   it("legitimate owner can create and use policy", async function () {
     const { registry, policyRegistry, guard, owner, agentWallet, recordingTarget, smartWallet } = await loadFixture(deployFixture);
     await register(registry, agentWallet, owner);
+    await registry.connect(owner).bindWallet(agentWallet.address, await smartWallet.getAddress());
 
     const target = await recordingTarget.getAddress();
     const salt = ethers.keccak256(ethers.toUtf8Bytes("owner-policy"));

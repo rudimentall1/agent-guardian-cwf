@@ -235,6 +235,58 @@ describe("AgentRegistry", function () {
     });
   });
 
+  describe("canonical wallet binding", function () {
+    beforeEach(async function () {
+      const sig = await signRegistration(agentWallet, agentWallet.address, owner.address, METADATA_HASH);
+      await registry.register(agentWallet.address, owner.address, METADATA_HASH, sig);
+    });
+
+    it("binds exactly one wallet to an agent and exposes it through walletOf", async function () {
+      const Wallet = await ethers.getContractFactory("AgentSmartWallet");
+      const wallet = await Wallet.deploy(owner.address, owner.address, agentWallet.address);
+      await wallet.waitForDeployment();
+
+      await expect(registry.connect(owner).bindWallet(agentWallet.address, await wallet.getAddress()))
+        .to.emit(registry, "AgentWalletBound")
+        .withArgs(agentWallet.address, await wallet.getAddress(), owner.address);
+      expect(await registry.walletOf(agentWallet.address)).to.equal(await wallet.getAddress());
+    });
+
+    it("rejects binding by a non-owner", async function () {
+      const Wallet = await ethers.getContractFactory("AgentSmartWallet");
+      const wallet = await Wallet.deploy(owner.address, owner.address, agentWallet.address);
+      await wallet.waitForDeployment();
+
+      await expect(registry.connect(attacker).bindWallet(agentWallet.address, await wallet.getAddress()))
+        .to.be.revertedWithCustomError(registry, "NotAgentOwner")
+        .withArgs(agentWallet.address, attacker.address);
+    });
+
+    it("rejects a second wallet binding, making the canonical custody target immutable", async function () {
+      const Wallet = await ethers.getContractFactory("AgentSmartWallet");
+      const first = await Wallet.deploy(owner.address, owner.address, agentWallet.address);
+      const second = await Wallet.deploy(owner.address, owner.address, agentWallet.address);
+      await first.waitForDeployment();
+      await second.waitForDeployment();
+
+      await registry.connect(owner).bindWallet(agentWallet.address, await first.getAddress());
+      await expect(registry.connect(owner).bindWallet(agentWallet.address, await second.getAddress()))
+        .to.be.revertedWithCustomError(registry, "WalletAlreadyBound")
+        .withArgs(agentWallet.address, await first.getAddress());
+    });
+
+    it("rejects a wallet whose immutable agent identity does not match", async function () {
+      const otherAgent = ethers.Wallet.createRandom();
+      const Wallet = await ethers.getContractFactory("AgentSmartWallet");
+      const wallet = await Wallet.deploy(owner.address, owner.address, otherAgent.address);
+      await wallet.waitForDeployment();
+
+      await expect(registry.connect(owner).bindWallet(agentWallet.address, await wallet.getAddress()))
+        .to.be.revertedWithCustomError(registry, "WalletAgentMismatch")
+        .withArgs(await wallet.getAddress(), otherAgent.address, agentWallet.address);
+    });
+  });
+
   describe("adversarial: domain separation / chain & contract binding", function () {
     it("rejects a signature produced for a different verifying contract", async function () {
       const Factory = await ethers.getContractFactory("AgentRegistry");

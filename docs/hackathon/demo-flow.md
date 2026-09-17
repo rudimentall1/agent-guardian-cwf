@@ -18,7 +18,7 @@ The demo deploys:
 - `AgentSmartWallet`
 - a simple target contract used as the transaction destination
 
-The SmartWallet is deployed with the Guard address, so the wallet only accepts execution through that Guard.
+The SmartWallet is deployed with the agent and Guard addresses. The owner then binds it as the agent's canonical wallet in `AgentRegistry`, so execution cannot substitute another wallet for the signed intent.
 
 ## Step 2: Register the agent
 

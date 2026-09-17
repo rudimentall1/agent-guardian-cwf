@@ -65,6 +65,9 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
     error DailySpendOverflow(bytes32 policyHash);
     error CallNotAuthorized(address target, bytes4 selector, bool isNativeTransfer);
     error WalletNotBoundToThisGuard(address wallet, address walletsGuard);
+    error WalletNotBoundToAgent(address wallet, address walletAgent, address intentAgent);
+    error WalletNotCanonical(address wallet, address expectedWallet, address agent);
+    error WalletOwnerMismatch(address wallet, address walletOwner, address registeredOwner);
     error WalletNotContract(address wallet);
     error NativeTransferRequiresWalletCustody(uint256 value);
 
@@ -284,6 +287,26 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
         // `isValidSignature` for contract/TEE/AA agents. Strict superset
         // of `ECDSA.recover` for the EOA case (see docs/adr/0009).
         if (!SignatureChecker.isValidSignatureNow(agent, digest, signature)) revert InvalidSignature();
+
+        // Only inspect the supplied wallet contract after the intent has
+        // passed cryptographic verification. This prevents an attacker from
+        // using an arbitrary wallet-shaped contract as a pre-signature
+        // execution surface while still enforcing a one-wallet-per-agent
+        // custody invariant.
+        address canonicalWallet = REGISTRY.walletOf(agent);
+        if (canonicalWallet == address(0) || canonicalWallet != wallet) {
+            revert WalletNotCanonical(wallet, canonicalWallet, agent);
+        }
+
+        address walletAgent = IAgentSmartWallet(wallet).agent();
+        if (walletAgent != agent) revert WalletNotBoundToAgent(wallet, walletAgent, agent);
+
+        address walletOwner = IAgentSmartWallet(wallet).owner();
+        if (walletOwner != registeredOwner) revert WalletOwnerMismatch(wallet, walletOwner, registeredOwner);
+
+        if (fromWallet && IAgentSmartWallet(wallet).executionGuard() != address(this)) {
+            revert WalletNotBoundToThisGuard(wallet, IAgentSmartWallet(wallet).executionGuard());
+        }
 
         if (uint256(spentToday) + uint256(amount) > type(uint128).max) {
             revert DailySpendOverflow(policyHash);

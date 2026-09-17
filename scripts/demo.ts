@@ -71,7 +71,7 @@ async function main() {
   );
   await guard.waitForDeployment();
   const guardAddress = await guard.getAddress();
-  const wallet = await (await ethers.getContractFactory("AgentSmartWallet")).deploy(owner.address, guardAddress);
+  const wallet = await (await ethers.getContractFactory("AgentSmartWallet")).deploy(owner.address, guardAddress, agent.address);
   await wallet.waitForDeployment();
   const walletAddress = await wallet.getAddress();
   const target = await (await ethers.getContractFactory("RecordingTarget")).deploy();
@@ -99,6 +99,7 @@ async function main() {
     ],
   }, { agent: agent.address, owner: owner.address, metadataHash });
   await (await registry.register(agent.address, owner.address, metadataHash, regSig)).wait();
+  await (await registry.bindWallet(agent.address, walletAddress)).wait();
   console.log("Agent active:", await registry.isActiveAgent(agent.address));
 
   // ---- 2. Owner creates a financial mandate ----

@@ -105,7 +105,8 @@ describe("AgentExecutionGuard: nonce invariants (seeded property tests)", functi
     guard = await Guard.deploy(await registry.getAddress(), await policyRegistry.getAddress());
     await guard.waitForDeployment();
     guardAddress = await guard.getAddress();
-    wallet = await deploySmartWallet(agent.address, guardAddress);
+    wallet = await deploySmartWallet(agent.address, guardAddress, agent.address);
+    await registry.setWallet(agent.address, await wallet.getAddress());
     await fundSmartWallet(wallet, ethers.parseEther("100"));
   });
 

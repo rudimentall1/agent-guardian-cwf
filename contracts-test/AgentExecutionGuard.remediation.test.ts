@@ -203,13 +203,17 @@ describe("Remediation gate: SmartWallet execution + policy ownership binding", f
      */
     walletA = await deploySmartWallet(
       owner.address,
-      guardAddress
+      guardAddress,
+      agentA.address
     );
+    await agentRegistry.bindWallet(agentA.address, await walletA.getAddress());
 
     walletB = await deploySmartWallet(
       owner.address,
-      guardAddress
+      guardAddress,
+      agentB.address
     );
+    await agentRegistry.bindWallet(agentB.address, await walletB.getAddress());
 
     const Target = await ethers.getContractFactory("RecordingTarget");
     target = await Target.deploy();

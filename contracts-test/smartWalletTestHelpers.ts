@@ -1,8 +1,8 @@
 import { ethers } from "hardhat";
 
-export async function deploySmartWallet(owner: string, guard: string): Promise<any> {
+export async function deploySmartWallet(owner: string, guard: string, agent: string): Promise<any> {
   const Wallet = await ethers.getContractFactory("AgentSmartWallet");
-  const wallet = await Wallet.deploy(owner, guard);
+  const wallet = await Wallet.deploy(owner, guard, agent);
   await wallet.waitForDeployment();
   return wallet;
 }

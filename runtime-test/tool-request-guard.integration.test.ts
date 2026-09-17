@@ -35,7 +35,7 @@ describe("CWF tool request -> Guard execution", function () {
 
     const wallet = await (
       await ethers.getContractFactory("AgentSmartWallet")
-    ).deploy(owner.address, await guard.getAddress());
+    ).deploy(owner.address, await guard.getAddress(), agent.address);
     await wallet.waitForDeployment();
 
     const target = await (
@@ -78,6 +78,7 @@ describe("CWF tool request -> Guard execution", function () {
         registrationSignature,
       )
     ).wait();
+    await registry.bindWallet(agent.address, await wallet.getAddress());
 
     const salt = ethers.keccak256(
       ethers.toUtf8Bytes("cwf-policy"),

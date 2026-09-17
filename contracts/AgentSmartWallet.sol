@@ -12,6 +12,9 @@ contract AgentSmartWallet is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     address public owner;
+    /// @notice Immutable agent identity this wallet is exclusively bound to.
+    /// The Guard must match this address before any agent-authorized execution.
+    address public immutable agent;
     address public executionGuard;
 
     error ZeroAddress();
@@ -25,9 +28,10 @@ contract AgentSmartWallet is ReentrancyGuard {
     event NativeRecovered(address indexed to, uint256 amount);
     event ERC20Recovered(address indexed token, address indexed to, uint256 amount);
 
-    constructor(address initialOwner, address initialExecutionGuard) {
-        if (initialOwner == address(0) || initialExecutionGuard == address(0)) revert ZeroAddress();
+    constructor(address initialOwner, address initialExecutionGuard, address initialAgent) {
+        if (initialOwner == address(0) || initialExecutionGuard == address(0) || initialAgent == address(0)) revert ZeroAddress();
         owner = initialOwner;
+        agent = initialAgent;
         executionGuard = initialExecutionGuard;
         emit OwnershipTransferred(address(0), initialOwner);
         emit ExecutionGuardChanged(address(0), initialExecutionGuard);
