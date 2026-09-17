@@ -44,19 +44,26 @@ for (const file of testFiles) {
 }
 console.log("");
 
-const command = process.platform === "win32"
-  ? "npx.cmd"
-  : "npx";
+// Normalize paths for Hardhat's CLI on every platform.
+const cliTestFiles = testFiles.map((file) =>
+  path.relative(root, file).split(path.sep).join("/")
+);
+
+const command = process.platform === "win32" ? "npm.cmd" : "npm";
 
 const result = spawnSync(
   command,
-  ["hardhat", "test", ...testFiles],
+  ["exec", "--", "hardhat", "test", ...cliTestFiles],
   {
     stdio: "inherit",
     cwd: root,
+    shell: process.platform === "win32",
   },
 );
 
-process.exit(
-  result.status === null ? 1 : result.status,
-);
+if (result.error) {
+  console.error("Failed to start Hardhat test runner:", result.error);
+  process.exit(1);
+}
+
+process.exit(result.status === null ? 1 : result.status);

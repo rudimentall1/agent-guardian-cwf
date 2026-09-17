@@ -157,6 +157,7 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
       const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce: 0n, deadline: FAR_DEADLINE, policyHash };
       const sig = await signIntent(agentA, intent);
 
+      await wallet.connect(ownerA).transferOwnership(ownerB.address);
       await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
 
       await expect(submit(intent, sig)).to.be.revertedWithCustomError(guard, "AgentNotActive");
@@ -167,8 +168,8 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
       const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce: 0n, deadline: FAR_DEADLINE, policyHash };
       const sig = await signIntent(agentA, intent);
 
-      await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
       await wallet.connect(ownerA).transferOwnership(ownerB.address);
+      await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
       await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
       await expect(submit(intent, sig))
@@ -205,8 +206,8 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
 
   // 4. Owner B creates Policy B for the same Agent A -> execute PASS.
   it("3. Owner B creates Policy B for the same Agent A -> execute PASS", async function () {
-    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await wallet.connect(ownerA).transferOwnership(ownerB.address);
+    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
     const { policyHash } = await createPolicy(ownerB, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-B")));
@@ -219,8 +220,8 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
   // 4. Owner A attempts to create/use a new policy for Agent A after
   // losing ownership -> must NOT obtain execution authority.
   it("4. Owner A creates a NEW policy after losing ownership -> creation succeeds, execution REVERTs", async function () {
-    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await wallet.connect(ownerA).transferOwnership(ownerB.address);
+    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
     const { policyHash } = await createPolicy(ownerA, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-A-post-transfer")));
@@ -275,8 +276,8 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce: 0n, deadline: FAR_DEADLINE, policyHash };
     const sig = await signIntent(agentA, intent);
 
-    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await wallet.connect(ownerA).transferOwnership(ownerB.address);
+    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
     await expect(submit(intent, sig)).to.be.revertedWithCustomError(guard, "PolicyOwnerMismatch");
 
@@ -297,8 +298,8 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     const { policyId, policyHash } = await createPolicy(ownerA, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-A")));
     const ownerBefore = await policyRegistry.ownerOf(policyId);
 
-    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await wallet.connect(ownerA).transferOwnership(ownerB.address);
+    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
     const ownerAfter = await policyRegistry.ownerOf(policyId);

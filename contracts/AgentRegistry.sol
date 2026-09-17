@@ -99,6 +99,7 @@ contract AgentRegistry is EIP712 {
     error WalletNotContract(address wallet);
     error WalletAgentMismatch(address wallet, address walletAgent, address expectedAgent);
     error WalletOwnerMismatch(address wallet, address walletOwner, address expectedOwner);
+    error WalletOwnershipRequiredForTransfer(address wallet, address walletOwner, address expectedNewOwner);
 
     constructor() EIP712("AgentRegistry", "1") {}
 
@@ -159,6 +160,16 @@ contract AgentRegistry is EIP712 {
         if (record.owner != msg.sender) revert NotAgentOwner(agent, msg.sender);
         if (newOwner == address(0)) revert ZeroAddress();
         if (newOwner == record.owner) revert SameOwner();
+
+        // The canonical wallet is independently owned. If it already exists,
+        // require custody to move first so registry owner and wallet owner
+        // can never diverge after this function returns successfully.
+        if (record.wallet != address(0)) {
+            address walletOwner = IAgentSmartWallet(record.wallet).owner();
+            if (walletOwner != newOwner) {
+                revert WalletOwnershipRequiredForTransfer(record.wallet, walletOwner, newOwner);
+            }
+        }
 
         address previousOwner = record.owner;
         record.owner = newOwner;

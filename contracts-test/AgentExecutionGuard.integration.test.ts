@@ -157,6 +157,8 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
       // submitted it yet
       const sig = await signIntent(0n);
 
+      // Custody must move before registry ownership can move.
+      await wallet.connect(owner).transferOwnership(newOwner.address);
       // original owner transfers the agent away (Gate 1 forces inactive
       // on transfer)
       await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
@@ -171,6 +173,7 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
 
     it("the OLD policy (bound to the old owner) remains permanently unusable even after the new owner reactivates the agent — this is the correct, intended P1 consequence", async function () {
       const sig = await signIntent(0n);
+      await wallet.connect(owner).transferOwnership(newOwner.address);
       await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
       await registry.connect(newOwner).reactivate(agent.address);
 
@@ -191,8 +194,8 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
 
     it("the agent's signing key itself is unaffected by ownership transfer — a policy the NEW owner establishes works immediately with the SAME key", async function () {
       const sig = await signIntent(0n);
-      await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
       await wallet.connect(owner).transferOwnership(newOwner.address);
+      await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
       await registry.connect(newOwner).reactivate(agent.address);
 
       // old policy: still correctly dead (see previous test)
@@ -221,8 +224,8 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
       await execute(1n);
       expect(await guard.nextNonce(agent.address)).to.equal(2n);
 
-      await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
       await wallet.connect(owner).transferOwnership(newOwner.address);
+      await registry.connect(owner).transferAgentOwnership(agent.address, newOwner.address);
       await registry.connect(newOwner).reactivate(agent.address);
       // [P1 fix] update the mock policy binding to the new owner so this
       // test continues to isolate nonce behavior specifically, rather
