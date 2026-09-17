@@ -175,6 +175,14 @@ contract AgentRegistry is EIP712 {
         record.owner = newOwner;
         record.active = false;
 
+        // Recovery authority is owner-specific. Never carry the previous
+        // owner`s guardian into the new owner`s security domain. The new
+        // owner must explicitly configure a fresh guardian after handoff.
+        if (record.recoveryAgent != address(0)) {
+            record.recoveryAgent = address(0);
+            emit RecoveryGuardianSet(agent, address(0));
+        }
+
         emit AgentOwnershipTransferred(agent, previousOwner, newOwner);
     }
 
