@@ -211,6 +211,18 @@ Run only the CWF runtime and API tests:
 
 `npm run test:cwf`
 
+## Security benchmark
+
+The repository includes a deterministic 10,000-intent benchmark against the real `AgentExecutionGuard` on a local Hardhat EVM.
+
+Run it with:
+
+`npm run benchmark:10k`
+
+The benchmark includes authorized traffic plus replay, expired intent, wrong target, wrong selector, malformed calldata, wrong wallet, inactive policy, policy-agent mismatch, invalid signature, and max-value attacks. It reports false-authorization rate, false-block rate, class-level detection, and latency percentiles.
+
+The benchmark is an authorization-evaluation suite, not 10,000 mined blockchain transactions and not a claim of Foundry/Echidna fuzzing. Results are written to `benchmark/latest.json`.
+
 ## Arbitrum Sepolia
 
 The repository contains a recorded Arbitrum Sepolia deployment from an earlier contract version. It must be redeployed after the canonical wallet-binding security fix before being presented as the current deployment.

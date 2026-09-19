@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "benchmark": "agent-guardian-cwf-10k",
+  "seed": 2741067501,
+  "generatedAt": "2026-09-19T16:57:59.006Z",
+  "network": "hardhat",
+  "chainId": 31337,
+  "total": 10000,
+  "statefulBootstrapTransactions": 1,
+  "staticAuthorizationChecks": 10000,
+  "falseAuthorizationRate": 0,
+  "falseBlockRate": 0,
+  "expectedAllows": 1000,
+  "expectedBlocks": 9000,
+  "classes": {
+    "valid": 1000,
+    "replay": 1000,
+    "expired": 1000,
+    "wrong_target": 1000,
+    "wrong_selector": 1000,
+    "malformed_calldata": 1000,
+    "wrong_wallet": 1000,
+    "inactive_policy": 1000,
+    "policy_agent_mismatch": 500,
+    "invalid_signature": 500,
+    "max_value": 1000
+  },
+  "actualAllows": 1000,
+  "actualBlocks": 9000,
+  "latencyMs": {
+    "min": 1.2851000000009662,
+    "mean": 2.3974266500000225,
+    "p50": 2.11449999999968,
+    "p95": 3.587600000006205,
+    "p99": 9.366099999999278,
+    "max": 22.571600000002945,
+    "total": 43500.556000000004
+  },
+  "byClass": {
+    "wrong_target": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 2303.3724999998885
+    },
+    "replay": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 2453.1565000000955
+    },
+    "inactive_policy": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 2285.809200000145
+    },
+    "wrong_wallet": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 3301.4764000001123
+    },
+    "max_value": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 2287.894700000008
+    },
+    "malformed_calldata": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 2257.73109999999
+    },
+    "invalid_signature": {
+      "total": 500,
+      "expectedAllow": 0,
+      "expectedBlock": 500,
+      "actualAllow": 0,
+      "actualBlock": 500,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 500
+      },
+      "totalMs": 1644.515299999981
+    },
+    "expired": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 1802.460600000053
+    },
+    "wrong_selector": {
+      "total": 1000,
+      "expectedAllow": 0,
+      "expectedBlock": 1000,
+      "actualAllow": 0,
+      "actualBlock": 1000,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 1000
+      },
+      "totalMs": 2329.6674999999886
+    },
+    "valid": {
+      "total": 1000,
+      "expectedAllow": 1000,
+      "expectedBlock": 0,
+      "actualAllow": 1000,
+      "actualBlock": 0,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {},
+      "totalMs": 2146.3226000000213
+    },
+    "policy_agent_mismatch": {
+      "total": 500,
+      "expectedAllow": 0,
+      "expectedBlock": 500,
+      "actualAllow": 0,
+      "actualBlock": 500,
+      "falseAllow": 0,
+      "falseBlock": 0,
+      "errors": {
+        "REVERT": 500
+      },
+      "totalMs": 1161.8600999999398
+    }
+  },
+  "methodology": {
+    "description": "10,000 deterministic signed TransactionIntent authorization checks against the real AgentExecutionGuard on a local Hardhat EVM.",
+    "statefulReplayBootstrap": "One real execution consumes nonce 0; replay cases submit signed nonce 0 after consumption.",
+    "allowCriterion": "Guard staticCall completes without revert.",
+    "blockCriterion": "Guard staticCall reverts.",
+    "note": "This benchmark measures authorization evaluation. It is not 10,000 mined blockchain transactions and does not claim Foundry/Echidna fuzzing."
+  }
+}

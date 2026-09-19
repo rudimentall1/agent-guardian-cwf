@@ -13,6 +13,7 @@
     "test:cwf": "node scripts/run-cwf-tests.js",
     "test:hardhat": "hardhat test && node scripts/run-cwf-tests.js",
     "test:cwf:intent": "hardhat test runtime-test/intent.test.ts",
+    "benchmark:10k": "hardhat run benchmark/run-10k.ts",
     "coverage": "hardhat coverage"
   },
   "repository": {
