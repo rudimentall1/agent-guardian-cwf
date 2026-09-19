@@ -26,6 +26,7 @@ contract MockERC1271Owner {
 
     /// @dev Lets the contract owner create/manage policies so msg.sender is this contract.
     function execute(address target, bytes calldata data) external returns (bytes memory) {
+        require(msg.sender == signer, "not signer");
         (bool success, bytes memory returndata) = target.call(data);
         if (!success) {
             assembly {
