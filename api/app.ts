@@ -309,10 +309,22 @@ export function createCwfApiHandler(context: CwfApiContext) {
         req.method === "POST" &&
         req.url === "/v1/intent/execute"
       ) {
+        // The HTTP API is intentionally fail-closed: an execution request
+        // must pass the configured Guardian preflight before the relayer
+        // submits it to the on-chain Guard. The on-chain Guard remains the
+        // final authorization boundary and is still independently callable.
         if (!context.executor) {
           send(res, 503, {
             ok: false,
             error: "execution_not_configured",
+          });
+          return;
+        }
+
+        if (!context.preflight) {
+          send(res, 503, {
+            ok: false,
+            error: "preflight_not_configured",
           });
           return;
         }
@@ -332,6 +344,22 @@ export function createCwfApiHandler(context: CwfApiContext) {
           intent,
           signature,
         };
+
+        try {
+          await context.preflight(request);
+        } catch (error) {
+          const reason =
+            error instanceof Error
+              ? error.message
+              : "simulation_reverted";
+
+          send(res, 200, {
+            ok: false,
+            decision: "BLOCK",
+            reason,
+          });
+          return;
+        }
 
         const result = await executeIntent(
           context.executor,

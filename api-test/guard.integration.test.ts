@@ -379,8 +379,9 @@ describe("CWF HTTP API -> real Guard", function () {
         },
       );
 
-      expect(forbiddenExecute.response.ok).to.equal(false);
+      expect(forbiddenExecute.response.ok).to.equal(true);
       expect(forbiddenExecute.body.ok).to.equal(false);
+      expect(forbiddenExecute.body.decision).to.equal("BLOCK");
 
       expect(
         await forbiddenTarget.callCount(),
@@ -426,9 +427,10 @@ describe("CWF HTTP API -> real Guard", function () {
         },
       );
 
-      expect(tampered.response.ok).to.equal(false);
+      expect(tampered.response.ok).to.equal(true);
       expect(tampered.body.ok).to.equal(false);
-      expect(tampered.body.error).to.contain(
+      expect(tampered.body.decision).to.equal("BLOCK");
+      expect(tampered.body.reason).to.contain(
         "InvalidSignature",
       );
 

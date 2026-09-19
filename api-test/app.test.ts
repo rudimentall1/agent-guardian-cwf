@@ -110,4 +110,119 @@ describe("CWF HTTP API", function () {
       });
     }
   });
+
+  it("fails closed when execute is configured without Guardian preflight", async function () {
+    const target = ethers.Wallet.createRandom().address;
+    const agent = ethers.Wallet.createRandom().address;
+    const wallet = ethers.Wallet.createRandom().address;
+    let executorCalled = false;
+
+    const server = createServer(
+      createCwfApiHandler({
+        tools: new Map(),
+        chainId: 31337n,
+        verifyingContract: ethers.Wallet.createRandom().address,
+        executor: {
+          async executeFromWallet() {
+            executorCalled = true;
+            return { wait: async () => ({ hash: "0x" }) };
+          },
+        },
+      }),
+    );
+
+    const port = await startServer(server);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/v1/intent/execute`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          intent: {
+            agent,
+            wallet,
+            target,
+            value: "0",
+            data: "0x",
+            nonce: "0",
+            deadline: "4102444800",
+            policyHash: ethers.ZeroHash,
+          },
+          signature: "0x1234",
+        }),
+      });
+
+      expect(response.status).to.equal(503);
+      expect(await response.json()).to.deep.equal({
+        ok: false,
+        error: "preflight_not_configured",
+      });
+      expect(executorCalled).to.equal(false);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("blocks execute when Guardian preflight rejects and never calls the executor", async function () {
+    const target = ethers.Wallet.createRandom().address;
+    const agent = ethers.Wallet.createRandom().address;
+    const wallet = ethers.Wallet.createRandom().address;
+    let executorCalled = false;
+    let preflightCalled = false;
+
+    const server = createServer(
+      createCwfApiHandler({
+        tools: new Map(),
+        chainId: 31337n,
+        verifyingContract: ethers.Wallet.createRandom().address,
+        executor: {
+          async executeFromWallet() {
+            executorCalled = true;
+            return { wait: async () => ({ hash: "0x" }) };
+          },
+        },
+        preflight: async () => {
+          preflightCalled = true;
+          throw new Error("PolicyBlocked");
+        },
+      }),
+    );
+
+    const port = await startServer(server);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/v1/intent/execute`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          intent: {
+            agent,
+            wallet,
+            target,
+            value: "0",
+            data: "0x",
+            nonce: "0",
+            deadline: "4102444800",
+            policyHash: ethers.ZeroHash,
+          },
+          signature: "0x1234",
+        }),
+      });
+
+      expect(response.status).to.equal(200);
+      expect(await response.json()).to.deep.equal({
+        ok: false,
+        decision: "BLOCK",
+        reason: "PolicyBlocked",
+      });
+      expect(preflightCalled).to.equal(true);
+      expect(executorCalled).to.equal(false);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
 });
