@@ -7,10 +7,17 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 contract MockERC1271Owner {
     bytes4 internal constant MAGICVALUE = 0x1626ba7e;
 
-    address public immutable signer;
+    address public signer;
+    address public immutable admin;
 
     constructor(address signer_) {
         signer = signer_;
+        admin = msg.sender;
+    }
+
+    function setSigner(address newSigner) external {
+        require(msg.sender == admin, "not admin");
+        signer = newSigner;
     }
 
     function isValidSignature(bytes32 hash, bytes memory signature) external view returns (bytes4) {

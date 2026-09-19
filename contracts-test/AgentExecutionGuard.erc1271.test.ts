@@ -75,6 +75,58 @@ describe("ERC-1271 contract owner approvals — adversarial", function () {
     expect((await guard.dailySpend(policyHash)).spent).to.equal(value);
   });
 
+  it("invalidates a previously signed approval when the ERC-1271 owner rotates its signer", async function () {
+    const { ownerSigner, wallet, agent, contractOwner, guard, target, policyHash, net } = await setup();
+    const value = 2n;
+    const targetAddress = await target.getAddress();
+    const guardAddress = await guard.getAddress();
+    const calldataHash = ethers.keccak256("0x");
+    const intent = { agent: agent.address, wallet: await wallet.getAddress(), target: targetAddress, value, calldataHash, nonce: 0n, deadline: DEADLINE, policyHash };
+    const intentSignature = await signTypedDataDigest(agent,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, intentTypes, intent,
+    );
+    const approval = { ...intent, approvalDeadline: DEADLINE };
+    const approvalSignature = await signTypedDataDigest(ownerSigner,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, approvalTypes, approval,
+    );
+
+    const replacementSigner = ethers.Wallet.createRandom().connect(ethers.provider);
+    await contractOwner.setSigner(replacementSigner.address);
+    expect(await contractOwner.isValidSignature(
+      await guard.hashApproval(agent.address, await wallet.getAddress(), targetAddress, value, calldataHash, 0n, DEADLINE, policyHash, DEADLINE),
+      approvalSignature,
+    )).to.equal("0xffffffff");
+    await expect(guard.executeWithApprovalFromWallet(
+      agent.address, await wallet.getAddress(), targetAddress, value, "0x", 0n, DEADLINE, policyHash,
+      intentSignature, DEADLINE, approvalSignature,
+    )).to.be.revertedWithCustomError(guard, "InvalidApprovalSignature");
+    expect(await guard.nextNonce(agent.address)).to.equal(0n);
+    expect((await guard.dailySpend(policyHash)).spent).to.equal(0n);
+  });
+
+  it("does not treat an ERC-1271 signer rotation as an authorization bypass for a new signer", async function () {
+    const { ownerSigner, wallet, agent, contractOwner, guard, target, policyHash, net } = await setup();
+    const value = 2n;
+    const targetAddress = await target.getAddress();
+    const guardAddress = await guard.getAddress();
+    const calldataHash = ethers.keccak256("0x");
+    const intent = { agent: agent.address, wallet: await wallet.getAddress(), target: targetAddress, value, calldataHash, nonce: 0n, deadline: DEADLINE, policyHash };
+    const intentSignature = await signTypedDataDigest(agent,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, intentTypes, intent,
+    );
+    const approval = { ...intent, approvalDeadline: DEADLINE };
+    const replacementSigner = ethers.Wallet.createRandom().connect(ethers.provider);
+    await contractOwner.setSigner(replacementSigner.address);
+    const replacementApproval = await signTypedDataDigest(replacementSigner,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, approvalTypes, approval,
+    );
+    await guard.executeWithApprovalFromWallet(
+      agent.address, await wallet.getAddress(), targetAddress, value, "0x", 0n, DEADLINE, policyHash,
+      intentSignature, DEADLINE, replacementApproval,
+    );
+    expect(await guard.nextNonce(agent.address)).to.equal(1n);
+  });
+
   it("fails closed when the ERC-1271 owner rejects the approval", async function () {
     const { wallet, attacker, agent, guard, target, policyHash, net } = await setup();
     const value = 2n;
