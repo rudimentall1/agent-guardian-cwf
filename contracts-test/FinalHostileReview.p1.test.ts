@@ -172,6 +172,10 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
       await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
       await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
+      // The old policy is rejected because its immutable owner is no
+      // longer the current registry owner. The ownership epoch separately
+      // guarantees that the same nonce can never become valid again if
+      // ownership later returns to Owner A.
       await expect(submit(intent, sig))
         .to.be.revertedWithCustomError(guard, "PolicyOwnerMismatch")
         .withArgs(policyHash, ownerB.address, ownerA.address);
@@ -211,10 +215,11 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
     const { policyHash } = await createPolicy(ownerB, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-B")));
-    const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce: 0n, deadline: FAR_DEADLINE, policyHash };
+    const nonce = await guard.nextNonce(agentA.address);
+    const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce, deadline: FAR_DEADLINE, policyHash };
     const sig = await signIntent(agentA, intent);
     await submit(intent, sig);
-    expect(await guard.nextNonce(agentA.address)).to.equal(1n);
+    expect(await guard.nextNonce(agentA.address)).to.equal(nonce + 1n);
   });
 
   // 4. Owner A attempts to create/use a new policy for Agent A after
@@ -225,8 +230,9 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
 
     const { policyHash } = await createPolicy(ownerA, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-A-post-transfer")));
+    const nonce = await guard.nextNonce(agentA.address);
 
-    const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce: 0n, deadline: FAR_DEADLINE, policyHash };
+    const intent: Intent = { agent: agentA.address, wallet: await wallet.getAddress(), target: targetAddress, value: 0n, data: "0x", nonce, deadline: FAR_DEADLINE, policyHash };
     const sig = await signIntent(agentA, intent);
     await expect(submit(intent, sig))
       .to.be.revertedWithCustomError(guard, "PolicyOwnerMismatch")
@@ -289,10 +295,57 @@ describe("FINAL HOSTILE REVIEW: policy-owner authorization (real stack, no mocks
     await agentRegistry.connect(ownerB).reactivate(agentA.address);
     await expect(submit(intent, sig)).to.be.revertedWithCustomError(guard, "PolicyOwnerMismatch");
 
-    expect(await guard.nextNonce(agentA.address)).to.equal(0n);
+    expect(await guard.nextNonce(agentA.address)).to.equal(1n << 192n);
   });
 
-  // 9. Old policyHash must not become valid again after ownership
+  // 9. Full A -> B -> A round-trip must not resurrect an old signed
+  // intent. This is the hostile case that motivated the ownership epoch.
+  it("9. A -> B -> A ownership round-trip permanently kills the old signed intent", async function () {
+    const { policyHash: oldPolicyHash } = await createPolicy(
+      ownerA,
+      agentA.address,
+      ethers.keccak256(ethers.toUtf8Bytes("policy-roundtrip-old")),
+    );
+    const staleIntent: Intent = {
+      agent: agentA.address,
+      wallet: await wallet.getAddress(),
+      target: targetAddress,
+      value: 0n,
+      data: "0x",
+      nonce: 0n,
+      deadline: FAR_DEADLINE,
+      policyHash: oldPolicyHash,
+    };
+    const staleSig = await signIntent(agentA, staleIntent);
+
+    await wallet.connect(ownerA).transferOwnership(ownerB.address);
+    await agentRegistry.connect(ownerA).transferAgentOwnership(agentA.address, ownerB.address);
+    await agentRegistry.connect(ownerB).reactivate(agentA.address);
+
+    await wallet.connect(ownerB).transferOwnership(ownerA.address);
+    await agentRegistry.connect(ownerB).transferAgentOwnership(agentA.address, ownerA.address);
+    await agentRegistry.connect(ownerA).reactivate(agentA.address);
+
+    expect(await agentRegistry.ownershipVersion(agentA.address)).to.equal(2n);
+    expect(await guard.nextNonce(agentA.address)).to.equal(2n << 192n);
+
+    await expect(submit(staleIntent, staleSig))
+      .to.be.revertedWithCustomError(guard, "InvalidNonce")
+      .withArgs(0n, 2n << 192n);
+
+    const { policyHash: freshPolicyHash } = await createPolicy(
+      ownerA,
+      agentA.address,
+      ethers.keccak256(ethers.toUtf8Bytes("policy-roundtrip-new")),
+    );
+    const freshNonce = await guard.nextNonce(agentA.address);
+    const freshIntent: Intent = { ...staleIntent, nonce: freshNonce, policyHash: freshPolicyHash };
+    const freshSig = await signIntent(agentA, freshIntent);
+    await submit(freshIntent, freshSig);
+    expect(await guard.nextNonce(agentA.address)).to.equal(freshNonce + 1n);
+  });
+
+  // 10. Old policyHash must not become valid again after ownership
   // transfer/reactivation — corroborated via direct storage inspection.
   it("9. Old policyHash's owner is verifiably permanent in PolicyRegistry storage across transfer/reactivation", async function () {
     const { policyId, policyHash } = await createPolicy(ownerA, agentA.address, ethers.keccak256(ethers.toUtf8Bytes("policy-A")));

@@ -214,9 +214,10 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
 
       // the SAME agent key signs a new intent referencing the new
       // policy — succeeds immediately.
-      const newSig = await signIntent(0n, FAR_DEADLINE, newPolicyHash);
-      await guard.execute(agent.address, await wallet.getAddress(), targetAddress, 0n, "0x", 0n, FAR_DEADLINE, newPolicyHash, newSig);
-      expect(await guard.nextNonce(agent.address)).to.equal(1n);
+      const newNonce = await guard.nextNonce(agent.address);
+      const newSig = await signIntent(newNonce, FAR_DEADLINE, newPolicyHash);
+      await guard.execute(agent.address, await wallet.getAddress(), targetAddress, 0n, "0x", newNonce, FAR_DEADLINE, newPolicyHash, newSig);
+      expect(await guard.nextNonce(agent.address)).to.equal(newNonce + 1n);
     });
 
     it("nonce state is not reset by ownership transfer or reactivation", async function () {
@@ -233,10 +234,14 @@ describe("AgentExecutionGuard + AgentRegistry integration", function () {
       // PolicyOwnerMismatch that the two tests above cover on their own.
       await policyRegistry.setFullBinding(ZERO_HASH, newOwner.address, agent.address, true, true, ethers.MaxUint256);
 
-      // nonce continues from 2, not reset to 0
-      await expect(execute(0n)).to.be.revertedWithCustomError(guard, "InvalidNonce").withArgs(0n, 2n);
-      await execute(2n);
-      expect(await guard.nextNonce(agent.address)).to.equal(3n);
+      // Ownership handoff moves the nonce into a new epoch. The old
+      // nonce 2 is permanently stale; the next valid nonce is the epoch-1
+      // base, preserving the sequential counter inside that epoch.
+      const epochNonce = await guard.nextNonce(agent.address);
+      expect(epochNonce).to.equal(1n << 192n);
+      await expect(execute(2n)).to.be.revertedWithCustomError(guard, "InvalidNonce").withArgs(2n, epochNonce);
+      await execute(epochNonce);
+      expect(await guard.nextNonce(agent.address)).to.equal(epochNonce + 1n);
     });
   });
 });

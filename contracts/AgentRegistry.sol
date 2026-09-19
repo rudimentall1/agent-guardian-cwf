@@ -70,6 +70,10 @@ contract AgentRegistry is EIP712 {
         /// @notice Canonical custody wallet for this agent. Zero until the
         /// current owner explicitly binds one. The binding is one-time.
         address wallet;
+        /// @notice Monotonic authority epoch. Every ownership handoff bumps
+        /// this value, permanently invalidating signatures from the prior
+        /// ownership context.
+        uint64 ownershipVersion;
     }
 
     /// @dev keccak256("AgentRegistration(address agent,address owner,bytes32 metadataHash)")
@@ -123,7 +127,15 @@ contract AgentRegistry is EIP712 {
         // in docs/threat-model.md, "Gate 1 status".
         if (!SignatureChecker.isValidSignatureNow(agent, digest, signature)) revert InvalidSignature();
 
-        _agents[agent] = Agent({owner: owner, active: true, metadataHash: metadataHash, registeredAt: uint64(block.timestamp), recoveryAgent: address(0), wallet: address(0)});
+        _agents[agent] = Agent({
+            owner: owner,
+            active: true,
+            metadataHash: metadataHash,
+            registeredAt: uint64(block.timestamp),
+            recoveryAgent: address(0),
+            wallet: address(0),
+            ownershipVersion: 0
+        });
 
         emit AgentRegistered(agent, owner, metadataHash);
     }
@@ -174,6 +186,7 @@ contract AgentRegistry is EIP712 {
         address previousOwner = record.owner;
         record.owner = newOwner;
         record.active = false;
+        record.ownershipVersion += 1;
 
         // Recovery authority is owner-specific. Never carry the previous
         // owner`s guardian into the new owner`s security domain. The new
@@ -230,6 +243,11 @@ contract AgentRegistry is EIP712 {
     /// owner has not completed wallet binding yet.
     function walletOf(address agent) external view returns (address) {
         return _agents[agent].wallet;
+    }
+
+    /// @notice Current ownership epoch for signed execution replay protection.
+    function ownershipVersion(address agent) external view returns (uint64) {
+        return _agents[agent].ownershipVersion;
     }
 
 

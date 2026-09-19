@@ -164,7 +164,9 @@ Run the demo with:
 
 The Solidity and Hardhat suite currently reports:
 
-**196 passing**
+**190 passing**
+
+The CWF runtime and API suite reports **13 passing**, for **203 tests total**.
 
 The tests cover adversarial cases including:
 
@@ -175,6 +177,8 @@ The tests cover adversarial cases including:
 - value modification
 - deadline modification
 - policy substitution
+- ownership-epoch nonce invalidation
+- A -> B -> A stale-signature resurrection
 - cross-chain replay
 - cross-contract replay
 - reentrancy

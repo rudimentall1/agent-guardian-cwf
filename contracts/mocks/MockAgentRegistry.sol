@@ -19,6 +19,7 @@ contract MockAgentRegistry is IAgentRegistry {
     /// get a matching pair without needing to think about it.
     mapping(address => address) private _owner;
     mapping(address => address) private _wallet;
+    mapping(address => uint64) private _ownershipVersion;
 
     function setActive(address agent, bool active_) external {
         _active[agent] = active_;
@@ -45,5 +46,13 @@ contract MockAgentRegistry is IAgentRegistry {
 
     function walletOf(address agent) external view returns (address) {
         return _wallet[agent];
+    }
+
+    function ownershipVersion(address agent) external view returns (uint64) {
+        return _ownershipVersion[agent];
+    }
+
+    function setOwnershipVersion(address agent, uint64 version) external {
+        _ownershipVersion[agent] = version;
     }
 }

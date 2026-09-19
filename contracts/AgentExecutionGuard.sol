@@ -26,8 +26,15 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
     IAgentRegistry public immutable REGISTRY;
     IPolicyRegistry public immutable POLICY_REGISTRY;
 
-    mapping(address => uint256) public nextNonce;
+    // Nonce layout: high 64 bits are the AgentRegistry ownership epoch;
+    // low 192 bits are the sequential execution counter. Ownership changes
+    // therefore move the valid nonce space permanently forward, so an old
+    // signed nonce can never become valid again if ownership later returns
+    // to the previous owner.
+    mapping(address => uint256) private _nextNonce;
     mapping(address => bool) public pausedAgents;
+
+    uint256 private constant NONCE_SEQUENCE_MASK = (uint256(1) << 192) - 1;
 
     struct DailySpend {
         uint64 day;
@@ -49,6 +56,7 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
     error NotPolicyOwner();
     error IntentExpired(uint256 deadline, uint256 currentTimestamp);
     error InvalidNonce(uint256 provided, uint256 expected);
+    error NonceSequenceExhausted(address agent, uint64 ownershipVersion);
     error InvalidSignature();
     error InvalidApprovalSignature();
     error ApprovalRequired(bytes32 policyHash, uint256 value, uint256 threshold);
@@ -75,6 +83,14 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
         if (registry == address(0) || policyRegistry == address(0)) revert ZeroAddress();
         REGISTRY = IAgentRegistry(registry);
         POLICY_REGISTRY = IPolicyRegistry(policyRegistry);
+    }
+
+    /// @notice Current valid nonce for the agent. The high 64 bits encode
+    /// the ownership epoch; the low 192 bits encode the sequential counter.
+    function nextNonce(address agent) public view returns (uint256) {
+        uint256 epochBase = uint256(REGISTRY.ownershipVersion(agent)) << 192;
+        uint256 stored = _nextNonce[agent];
+        return stored >= epochBase ? stored : epochBase;
     }
 
     function pauseAgent(address agent) external {
@@ -243,7 +259,8 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
         if (!valueAllowed) revert MaxTxValueExceeded(value, policyHash);
         if (!callAllowed) revert CallNotAuthorized(target, selector, callKind == IPolicyRegistry.CallKind.NativeTransfer);
 
-        uint256 expected = nextNonce[agent];
+        uint64 ownershipVersion = REGISTRY.ownershipVersion(agent);
+        uint256 expected = nextNonce(agent);
         if (nonce != expected) revert InvalidNonce(nonce, expected);
 
         bytes32 policyId = POLICY_REGISTRY.policyIdOfHash(policyHash);
@@ -313,7 +330,10 @@ contract AgentExecutionGuard is EIP712, ReentrancyGuard {
         }
 
         dailySpend[policyHash] = DailySpend({day: day, spent: spentToday + amount});
-        nextNonce[agent] = nonce + 1;
+        if ((nonce & NONCE_SEQUENCE_MASK) == NONCE_SEQUENCE_MASK) {
+            revert NonceSequenceExhausted(agent, ownershipVersion);
+        }
+        _nextNonce[agent] = nonce + 1;
 
         bool success;
         bytes memory ret;

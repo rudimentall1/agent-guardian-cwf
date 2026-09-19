@@ -19,4 +19,7 @@ interface IAgentRegistry {
 
     /// @notice Canonical custody wallet bound to `agent`, or zero if none.
     function walletOf(address agent) external view returns (address);
+
+    /// @notice Monotonic ownership epoch used to invalidate stale signed intents.
+    function ownershipVersion(address agent) external view returns (uint64);
 }
