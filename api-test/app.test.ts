@@ -165,6 +165,50 @@ describe("CWF HTTP API", function () {
     }
   });
 
+  it("surfaces risk intelligence in agent prepare", async function () {
+    const target = ethers.Wallet.createRandom().address;
+    const agent = ethers.Wallet.createRandom().address;
+    const wallet = ethers.Wallet.createRandom().address;
+    const riskProviders = [{
+      name: "test-review",
+      async assess() {
+        return {
+          status: "REVIEW" as const,
+          score: 50,
+          confidence: 0.4,
+          degraded: true,
+          signals: [],
+        };
+      },
+    }];
+    const tool = defineContractTool("demo", "record", target, "function record(uint256 id)");
+    const server = createServer(createCwfApiHandler({
+      tools: new Map([["demo:record", tool]]),
+      chainId: 31337n,
+      verifyingContract: ethers.Wallet.createRandom().address,
+      riskProviders,
+    }));
+    const port = await startServer(server);
+    try {
+      const response = await fetch("http://127.0.0.1:" + port + "/v1/agent/prepare", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          agent, wallet, tool: "demo", action: "record", args: [1],
+          value: "0", nonce: "0", deadline: "4102444800", policyHash: ethers.ZeroHash,
+        }),
+      });
+      const result = await response.json();
+      expect(result.ok).to.equal(true);
+      expect(result.risk.status).to.equal("REVIEW");
+      expect(result.risk.degraded).to.equal(true);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close(error => error ? reject(error) : resolve()),
+      );
+    }
+  });
+
   it("blocks execute when Guardian preflight rejects and never calls the executor", async function () {
     const target = ethers.Wallet.createRandom().address;
     const agent = ethers.Wallet.createRandom().address;

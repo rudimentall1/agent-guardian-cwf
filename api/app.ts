@@ -246,7 +246,8 @@ export function createCwfApiHandler(context: CwfApiContext) {
 
       if (
         req.method === "POST" &&
-        req.url === "/v1/intent/prepare"
+        (req.url === "/v1/intent/prepare" ||
+          req.url === "/v1/agent/prepare")
       ) {
         const body = await readJson(req);
         const toolRequest = asToolRequest(body);
@@ -270,6 +271,12 @@ export function createCwfApiHandler(context: CwfApiContext) {
         );
 
         const intent = resolved.intent;
+        const risk = context.riskProviders
+          ? await assessRisk(
+              { intent, chainId: context.chainId },
+              context.riskProviders,
+            )
+          : undefined;
 
         const domain = buildIntentDomain(
           context.chainId,
@@ -306,6 +313,7 @@ export function createCwfApiHandler(context: CwfApiContext) {
             },
           },
           digest,
+          risk,
         });
 
         return;
@@ -339,12 +347,32 @@ export function createCwfApiHandler(context: CwfApiContext) {
           signature,
         };
 
+        const risk = context.riskProviders
+          ? await assessRisk(
+              { intent, chainId: context.chainId },
+              context.riskProviders,
+            )
+          : undefined;
+
+        if (risk && risk.status !== "CLEAR") {
+          send(res, 200, {
+            ok: false,
+            decision: "BLOCK",
+            reason: risk.status === "BLOCK"
+              ? "Risk intelligence blocked the intent"
+              : "Risk intelligence requires review; execution is fail-closed",
+            risk,
+          });
+          return;
+        }
+
         try {
           await context.preflight(request);
 
           send(res, 200, {
             ok: true,
             decision: "ALLOW",
+            risk,
           });
         } catch (error) {
           const reason =
@@ -364,7 +392,8 @@ export function createCwfApiHandler(context: CwfApiContext) {
 
       if (
         req.method === "POST" &&
-        req.url === "/v1/intent/execute"
+        (req.url === "/v1/intent/execute" ||
+          req.url === "/v1/agent/execute")
       ) {
         // The HTTP API is intentionally fail-closed: an execution request
         // must pass the configured Guardian preflight before the relayer
@@ -402,6 +431,25 @@ export function createCwfApiHandler(context: CwfApiContext) {
           signature,
         };
 
+        const risk = context.riskProviders
+          ? await assessRisk(
+              { intent, chainId: context.chainId },
+              context.riskProviders,
+            )
+          : undefined;
+
+        if (risk && risk.status !== "CLEAR") {
+          send(res, 200, {
+            ok: false,
+            decision: "BLOCK",
+            reason: risk.status === "BLOCK"
+              ? "Risk intelligence blocked the intent"
+              : "Risk intelligence requires review; execution is fail-closed",
+            risk,
+          });
+          return;
+        }
+
         try {
           await context.preflight(request);
         } catch (error) {
@@ -414,6 +462,7 @@ export function createCwfApiHandler(context: CwfApiContext) {
             ok: false,
             decision: "BLOCK",
             reason,
+            risk,
           });
           return;
         }
@@ -426,6 +475,8 @@ export function createCwfApiHandler(context: CwfApiContext) {
         const receipt = result as { hash?: string; transactionHash?: string } | null | undefined;
         send(res, 200, {
           ok: true,
+          decision: "ALLOW",
+          risk,
           transactionHash: receipt?.hash ?? receipt?.transactionHash ?? null,
         });
 
