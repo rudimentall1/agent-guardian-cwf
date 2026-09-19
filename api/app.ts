@@ -18,6 +18,7 @@ import {
   ExecutionRequest,
   GuardExecutor,
 } from "../runtime/executor";
+import { assessRisk, RiskProvider } from "../runtime/risk";
 
 export type CwfApiContext = {
   tools: Map<string, ToolDefinition>;
@@ -25,6 +26,7 @@ export type CwfApiContext = {
   verifyingContract: string;
   executor?: GuardExecutor;
   preflight?: (request: ExecutionRequest) => Promise<void>;
+  riskProviders?: readonly RiskProvider[];
 };
 
 function send(
@@ -194,6 +196,20 @@ export function createCwfApiHandler(context: CwfApiContext) {
           ok: true,
           service: "agent-guardian-cwf",
         });
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/v1/risk/assess") {
+        const body = await readJson(req);
+        if (!body || typeof body !== "object") throw new Error("request body must be an object");
+        const input = body as Record<string, unknown>;
+        const intent = asExecutionIntent(input.intent);
+        const result = await assessRisk(
+          { intent, chainId: context.chainId },
+          context.riskProviders ?? [],
+          typeof input.deterministicBlockReason === "string" ? input.deterministicBlockReason : undefined,
+        );
+        send(res, 200, { ok: true, assessment: result });
         return;
       }
 
