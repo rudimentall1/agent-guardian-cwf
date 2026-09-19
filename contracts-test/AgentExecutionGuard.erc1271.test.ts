@@ -127,6 +127,96 @@ describe("ERC-1271 contract owner approvals — adversarial", function () {
     expect(await guard.nextNonce(agent.address)).to.equal(1n);
   });
 
+  it("permanently invalidates a contract-owner approval across A-to-B-to-A ownership round trips", async function () {
+    const { ownerSigner, wallet, agent, contractOwner, registry, guard, target, policyHash, net } = await setup();
+    const value = 2n;
+    const targetAddress = await target.getAddress();
+    const guardAddress = await guard.getAddress();
+    const walletAddress = await wallet.getAddress();
+    const calldataHash = ethers.keccak256("0x");
+    const intent = { agent: agent.address, wallet: walletAddress, target: targetAddress, value, calldataHash, nonce: 0n, deadline: DEADLINE, policyHash };
+    const intentSignature = await signTypedDataDigest(agent,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, intentTypes, intent,
+    );
+    const approvalSignature = await signTypedDataDigest(ownerSigner,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, approvalTypes,
+      { ...intent, approvalDeadline: DEADLINE },
+    );
+
+    const [, ownerB] = await ethers.getSigners();
+    await contractOwner.execute(await wallet.getAddress(), wallet.interface.encodeFunctionData("transferOwnership", [ownerB.address]));
+    await contractOwner.execute(await registry.getAddress(), registry.interface.encodeFunctionData("transferAgentOwnership", [agent.address, ownerB.address]));
+    await registry.connect(ownerB).reactivate(agent.address);
+
+    await wallet.connect(ownerB).transferOwnership(await contractOwner.getAddress());
+    await ownerB.sendTransaction({ to: await registry.getAddress(), data: registry.interface.encodeFunctionData("transferAgentOwnership", [agent.address, await contractOwner.getAddress()]) });
+    await contractOwner.execute(await registry.getAddress(), registry.interface.encodeFunctionData("reactivate", [agent.address]));
+
+    expect(await registry.ownerOf(agent.address)).to.equal(await contractOwner.getAddress());
+    expect(await guard.nextNonce(agent.address)).to.equal(2n << 192n);
+    expect(await contractOwner.isValidSignature(
+      await guard.hashApproval(agent.address, walletAddress, targetAddress, value, calldataHash, 0n, DEADLINE, policyHash, DEADLINE),
+      approvalSignature,
+    )).to.equal("0x1626ba7e");
+
+    await expect(guard.executeWithApprovalFromWallet(
+      agent.address, walletAddress, targetAddress, value, "0x", 0n, DEADLINE, policyHash,
+      intentSignature, DEADLINE, approvalSignature,
+    )).to.be.revertedWithCustomError(guard, "InvalidNonce");
+    expect(await guard.nextNonce(agent.address)).to.equal(2n << 192n);
+  });
+
+  it("invalidates a previously signed intent when an ERC-1271 agent rotates its signer", async function () {
+    const [ownerSigner] = await ethers.getSigners();
+    const agentSigner = ethers.Wallet.createRandom().connect(ethers.provider);
+    const contractAgent = await (await ethers.getContractFactory("MockERC1271Owner")).deploy(agentSigner.address);
+    await contractAgent.waitForDeployment();
+    const registry = await (await ethers.getContractFactory("AgentRegistry")).deploy();
+    await registry.waitForDeployment();
+    const net = await ethers.provider.getNetwork();
+    const metadataHash = ethers.keccak256(ethers.toUtf8Bytes("erc1271-agent"));
+    const registrationSignature = await signTypedDataDigest(agentSigner,
+      { name: "AgentRegistry", version: "1", chainId: net.chainId, verifyingContract: await registry.getAddress() },
+      registrationTypes,
+      { agent: await contractAgent.getAddress(), owner: ownerSigner.address, metadataHash },
+    );
+    await registry.register(await contractAgent.getAddress(), ownerSigner.address, metadataHash, registrationSignature);
+    const policyRegistry = await (await ethers.getContractFactory("PolicyRegistry")).deploy();
+    await policyRegistry.waitForDeployment();
+    const guard = await (await ethers.getContractFactory("AgentExecutionGuard")).deploy(await registry.getAddress(), await policyRegistry.getAddress());
+    await guard.waitForDeployment();
+    const wallet = await deploySmartWallet(ownerSigner.address, await guard.getAddress(), await contractAgent.getAddress());
+    await registry.connect(ownerSigner).bindWallet(await contractAgent.getAddress(), await wallet.getAddress());
+    await fundSmartWallet(wallet, ethers.parseEther("10"));
+    const target = await (await ethers.getContractFactory("RecordingTarget")).deploy();
+    await target.waitForDeployment();
+    const salt = ethers.keccak256(ethers.toUtf8Bytes("erc1271-agent-policy"));
+    await policyRegistry.connect(ownerSigner).createPolicy(
+      salt, await contractAgent.getAddress(), 100n, 100n, 0n, 0, DEADLINE, [], [await target.getAddress()],
+    );
+    const policyId = await policyRegistry.computePolicyId(ownerSigner.address, salt);
+    const policyHash = await policyRegistry.policyHashOf(policyId);
+    const value = 0n;
+    const targetAddress = await target.getAddress();
+    const walletAddress = await wallet.getAddress();
+    const guardAddress = await guard.getAddress();
+    const calldataHash = ethers.keccak256("0x");
+    const intent = { agent: await contractAgent.getAddress(), wallet: walletAddress, target: targetAddress, value, calldataHash, nonce: 0n, deadline: DEADLINE, policyHash };
+    const intentSignature = await signTypedDataDigest(agentSigner,
+      { name: "AgentExecutionGuard", version: "1", chainId: net.chainId, verifyingContract: guardAddress }, intentTypes, intent,
+    );
+
+    const replacementSigner = ethers.Wallet.createRandom().connect(ethers.provider);
+    await contractAgent.setSigner(replacementSigner.address);
+    expect(await contractAgent.isValidSignature(await guard.hashIntent(
+      await contractAgent.getAddress(), walletAddress, targetAddress, value, calldataHash, 0n, DEADLINE, policyHash,
+    ), intentSignature)).to.equal("0xffffffff");
+    await expect(guard.executeFromWallet(
+      await contractAgent.getAddress(), walletAddress, targetAddress, value, "0x", 0n, DEADLINE, policyHash, intentSignature,
+    )).to.be.revertedWithCustomError(guard, "InvalidSignature");
+    expect(await guard.nextNonce(await contractAgent.getAddress())).to.equal(0n);
+  });
+
   it("fails closed when the ERC-1271 owner rejects the approval", async function () {
     const { wallet, attacker, agent, guard, target, policyHash, net } = await setup();
     const value = 2n;
