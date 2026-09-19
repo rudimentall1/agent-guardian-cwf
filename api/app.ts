@@ -7,6 +7,7 @@ import {
   buildIntentDomain,
   intentDigest,
   TransactionIntent,
+  signIntent,
 } from "../runtime/intent";
 import {
   resolveToolRequest,
@@ -27,6 +28,8 @@ export type CwfApiContext = {
   executor?: GuardExecutor;
   preflight?: (request: ExecutionRequest) => Promise<void>;
   riskProviders?: readonly RiskProvider[];
+  demoGuardContract?: any;
+  demoAgentSigner?: ethers.Signer;
 };
 
 function send(
@@ -158,6 +161,23 @@ function asExecutionIntent(
   };
 }
 
+
+
+function typedIntentMessage(intent: TransactionIntent) {
+  return { agent: intent.agent, wallet: intent.wallet, target: intent.target, value: intent.value.toString(), calldataHash: ethers.keccak256(intent.data), nonce: intent.nonce.toString(), deadline: intent.deadline.toString(), policyHash: intent.policyHash };
+}
+
+function guardianErrorReason(error: any) {
+  const data = error?.data ?? error?.revert?.data ?? error?.info?.error?.data;
+  if (data) {
+    try {
+      const parsed = new ethers.Interface(["error CallNotAuthorized(address target,bytes4 selector,bool isNativeTransfer)","error InvalidSignature()","error PolicyNotActive(bytes32 policyHash)","error WalletNotCanonical(address wallet,address expectedWallet,address agent)"]).parseError(data);
+      if (parsed) return parsed.name;
+    } catch {}
+  }
+  return error?.shortMessage ?? error?.reason ?? error?.message ?? "guardian_rejected";
+}
+
 function serializeIntent(intent: TransactionIntent) {
   return {
     agent: intent.agent,
@@ -214,72 +234,59 @@ export function createCwfApiHandler(context: CwfApiContext) {
       }
 
       if (req.method === "GET" && req.url === "/v1/agent/demo") {
-        const root = process.env.CWF_PROJECT_ROOT ?? process.cwd();
-        const benchmark = JSON.parse(
-          readFileSync(join(root, "benchmark", "real-100-latest.json"), "utf8"),
-        );
-        const d = benchmark.deployments;
-        if (!d?.agent || !d?.wallet || !d?.target || !d?.policyHash) {
-          throw new Error("real benchmark agent configuration is unavailable");
+        const demoState=JSON.parse(readFileSync(join(process.env.CWF_PROJECT_ROOT ?? process.cwd(),"benchmark","agent-demo.json"),"utf8"));
+        if(!context.demoGuardContract) throw new Error("agent demo relayer is not configured");
+        const nonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+        const definition=context.tools.get("demo:ping");
+        if(!definition) throw new Error("demo:ping tool is not registered");
+        const toolRequest:ToolRequest={agent:demoState.agent,wallet:demoState.wallet,tool:"demo",action:"ping",args:[123],value:0n,nonce,deadline:BigInt(Math.floor(Date.now()/1000)+900),policyHash:demoState.policyHash};
+        const resolved=resolveToolRequest(definition,toolRequest);
+        const intent=resolved.intent;
+        const risk=await assessRisk({intent,chainId:context.chainId},context.riskProviders??[]);
+        const domain=buildIntentDomain(context.chainId,demoState.guard);
+        const digest=intentDigest(intent,context.chainId,demoState.guard);
+        send(res,200,{ok:true,stage:"AGENT_REQUEST → CANONICAL_INTENT → RISK_INTELLIGENCE → AGENT_SIGNATURE_READY",toolRequest:{tool:toolRequest.tool,action:toolRequest.action,args:toolRequest.args,agent:toolRequest.agent,wallet:toolRequest.wallet},intent:serializeIntent(intent),digest,typedData:{domain:{name:domain.name,version:domain.version,chainId:domain.chainId.toString(),verifyingContract:domain.verifyingContract},primaryType:"ExecutionIntent",types:EXECUTION_INTENT_TYPES,message:typedIntentMessage(intent)},risk,next:risk.status==="CLEAR"?"AGENT_SIGNATURE_READY":"EXECUTION_BLOCKED",demoDeployment:{guard:demoState.guard,registry:demoState.registry,policyRegistry:demoState.policyRegistry,wallet:demoState.wallet,agent:demoState.agent,target:demoState.target},signerConfigured:Boolean(context.demoAgentSigner)});
+        return;
+      }
+
+      if(req.method==="POST" && req.url==="/v1/agent/demo/execute"){
+        const root=process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const demoState=JSON.parse(readFileSync(join(root,"benchmark","agent-demo.json"),"utf8"));
+        if(!context.demoGuardContract || !context.demoAgentSigner) throw new Error("agent demo signer/relayer is not configured");
+        const nonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+        const iface=new ethers.Interface(["function ping(uint256 id)"]);
+        const intent:TransactionIntent={agent:demoState.agent,wallet:demoState.wallet,target:demoState.target,value:0n,data:iface.encodeFunctionData("ping",[Number(nonce%100000n)]),nonce,deadline:BigInt(Math.floor(Date.now()/1000)+900),policyHash:demoState.policyHash};
+        const risk=await assessRisk({intent,chainId:context.chainId},context.riskProviders??[]);
+        if(risk.status!=="CLEAR"){send(res,200,{ok:false,decision:"BLOCK",risk,reason:"Risk intelligence requires review"});return;}
+        const signature=await signIntent(context.demoAgentSigner,intent,context.chainId,demoState.guard);
+        const recovered=ethers.verifyTypedData(buildIntentDomain(context.chainId,demoState.guard),EXECUTION_INTENT_TYPES,typedIntentMessage(intent),signature);
+        if(ethers.getAddress(recovered)!==ethers.getAddress(demoState.agent)) throw new Error("agent signature recovery mismatch");
+        try{
+          await context.demoGuardContract.executeFromWallet.staticCall(intent.agent,intent.wallet,intent.target,intent.value,intent.data,intent.nonce,intent.deadline,intent.policyHash,signature);
+          const tx=await context.demoGuardContract.executeFromWallet(intent.agent,intent.wallet,intent.target,intent.value,intent.data,intent.nonce,intent.deadline,intent.policyHash,signature,{gasLimit:500000n});
+          const receipt=await tx.wait();
+          send(res,200,{ok:true,decision:"ALLOW",signatureVerified:true,agent:demoState.agent,intent:serializeIntent(intent),digest:intentDigest(intent,context.chainId,demoState.guard),risk,transactionHash:receipt?.hash??tx.hash,blockNumber:receipt?.blockNumber??null,gasUsed:receipt?.gasUsed?.toString()??null,explorer:"https://sepolia.arbiscan.io/tx/"+tx.hash});
+        }catch(error){send(res,200,{ok:false,decision:"BLOCK",signatureVerified:true,risk,reason:guardianErrorReason(error)});}
+        return;
+      }
+
+      if(req.method==="POST" && req.url==="/v1/agent/demo/block-test"){
+        const root=process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const demoState=JSON.parse(readFileSync(join(root,"benchmark","agent-demo.json"),"utf8"));
+        if(!context.demoGuardContract || !context.demoAgentSigner) throw new Error("agent demo signer/relayer is not configured");
+        const nonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+        const iface=new ethers.Interface(["function blocked(uint256 id)"]);
+        const intent:TransactionIntent={agent:demoState.agent,wallet:demoState.wallet,target:demoState.target,value:0n,data:iface.encodeFunctionData("blocked",[999]),nonce,deadline:BigInt(Math.floor(Date.now()/1000)+900),policyHash:demoState.policyHash};
+        const signature=await signIntent(context.demoAgentSigner,intent,context.chainId,demoState.guard);
+        const recovered=ethers.verifyTypedData(buildIntentDomain(context.chainId,demoState.guard),EXECUTION_INTENT_TYPES,typedIntentMessage(intent),signature);
+        if(ethers.getAddress(recovered)!==ethers.getAddress(demoState.agent)) throw new Error("agent signature recovery mismatch");
+        try{
+          await context.demoGuardContract.executeFromWallet.staticCall(intent.agent,intent.wallet,intent.target,intent.value,intent.data,intent.nonce,intent.deadline,intent.policyHash,signature);
+          send(res,500,{ok:false,decision:"UNEXPECTED_ALLOW",signatureVerified:true,intent:serializeIntent(intent)});
+        }catch(error){
+          const risk=await assessRisk({intent,chainId:context.chainId},context.riskProviders??[]);
+          send(res,200,{ok:true,decision:"BLOCK",signatureVerified:true,transactionSent:false,intent:serializeIntent(intent),reason:guardianErrorReason(error),risk});
         }
-        const toolRequest: ToolRequest = {
-          agent: d.agent,
-          wallet: d.wallet,
-          tool: "demo",
-          action: "ping",
-          args: [123],
-          value: 0n,
-          nonce: 50n,
-          deadline: BigInt(Math.floor(Date.now() / 1000) + 900),
-          policyHash: d.policyHash,
-        };
-        const definition = context.tools.get("demo:ping");
-        if (!definition) throw new Error("demo:ping tool is not registered");
-        const resolved = resolveToolRequest(definition, toolRequest);
-        const intent = resolved.intent;
-        const risk = await assessRisk(
-          { intent, chainId: context.chainId },
-          context.riskProviders ?? [],
-        );
-        const domain = buildIntentDomain(context.chainId, context.verifyingContract);
-        const digest = intentDigest(intent, context.chainId, context.verifyingContract);
-        send(res, 200, {
-          ok: true,
-          stage: "AGENT_REQUEST → CANONICAL_INTENT → RISK_INTELLIGENCE",
-          toolRequest: {
-            tool: toolRequest.tool,
-            action: toolRequest.action,
-            args: toolRequest.args,
-            agent: toolRequest.agent,
-            wallet: toolRequest.wallet,
-          },
-          intent: serializeIntent(intent),
-          digest,
-          typedData: {
-            domain: {
-              name: domain.name,
-              version: domain.version,
-              chainId: domain.chainId.toString(),
-              verifyingContract: domain.verifyingContract,
-            },
-            primaryType: "ExecutionIntent",
-            types: EXECUTION_INTENT_TYPES,
-            message: {
-              agent: intent.agent,
-              wallet: intent.wallet,
-              target: intent.target,
-              value: intent.value.toString(),
-              calldataHash: ethers.keccak256(intent.data),
-              nonce: intent.nonce.toString(),
-              deadline: intent.deadline.toString(),
-              policyHash: intent.policyHash,
-            },
-          },
-          risk,
-          next: risk.status === "CLEAR"
-            ? "AGENT_SIGNATURE_REQUIRED"
-            : "EXECUTION_BLOCKED",
-        });
         return;
       }
 

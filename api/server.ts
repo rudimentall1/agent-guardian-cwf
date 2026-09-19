@@ -22,7 +22,7 @@ const riskRpc=process.env.CWF_RISK_RPC_URL ?? "https://sepolia-rollup.arbitrum.i
 const riskProviders=[new OnChainRiskProvider({rpcUrl:riskRpc})];
 const rpcProvider=new ethers.JsonRpcProvider(riskRpc);
 const relayerKey=process.env.PRIVATE_KEY;
-const guardAbi=["function executeFromWallet(address agent,address wallet,address target,uint256 value,bytes data,uint256 nonce,uint256 deadline,bytes32 policyHash,bytes signature) returns (bytes)"];
+const guardAbi=["function executeFromWallet(address agent,address wallet,address target,uint256 value,bytes data,uint256 nonce,uint256 deadline,bytes32 policyHash,bytes signature) returns (bytes)","function nextNonce(address agent) view returns (uint256)"];
 const guardContract=relayerKey && verifyingContract
   ? new ethers.Contract(verifyingContract,guardAbi,new ethers.Wallet(relayerKey,rpcProvider))
   : undefined;
@@ -31,6 +31,11 @@ const guardExecutor=guardContract ? {
     return guardContract.executeFromWallet(agent,wallet,target,value,data,nonce,deadline,policyHash,signature);
   },
 } : undefined;
+const demoStatePath=join(projectRoot,"benchmark","agent-demo.json");
+const demoState=JSON.parse(readFileSync(demoStatePath,"utf8"));
+const demoAgentSigner=process.env.AGENT_DEMO_PRIVATE_KEY ? new ethers.Wallet(process.env.AGENT_DEMO_PRIVATE_KEY,rpcProvider) : undefined;
+if(demoAgentSigner && ethers.getAddress(demoAgentSigner.address)!==ethers.getAddress(demoState.agent)) throw new Error("AGENT_DEMO_PRIVATE_KEY does not match benchmark/agent-demo.json agent");
+const demoGuardContract=relayerKey ? new ethers.Contract(demoState.guard,guardAbi,new ethers.Wallet(relayerKey,rpcProvider)) : undefined;
 const preflight=guardContract ? async (request:{intent:{agent:string;wallet:string;target:string;value:bigint;data:string;nonce:bigint;deadline:bigint;policyHash:string};signature:string}) => {
   try {
     await guardContract.executeFromWallet.staticCall(request.intent.agent,request.intent.wallet,request.intent.target,request.intent.value,request.intent.data,request.intent.nonce,request.intent.deadline,request.intent.policyHash,request.signature);
@@ -40,7 +45,7 @@ const preflight=guardContract ? async (request:{intent:{agent:string;wallet:stri
     throw new Error(error?.shortMessage ?? error?.message ?? "simulation_reverted");
   }
 } : undefined;
-const apiHandler=createCwfApiHandler({tools,chainId,verifyingContract,riskProviders,executor:guardExecutor,preflight});
+const apiHandler=createCwfApiHandler({tools,chainId,verifyingContract,riskProviders,executor:guardExecutor,preflight,demoGuardContract,demoAgentSigner});
 const mime:Record<string,string>={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".svg":"image/svg+xml",".json":"application/json"};
 const server=createServer(async(req:IncomingMessage,res:ServerResponse)=>{
  if(req.url?.startsWith("/v1/")||req.url==="/health")return apiHandler(req,res);
