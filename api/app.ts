@@ -213,6 +213,76 @@ export function createCwfApiHandler(context: CwfApiContext) {
         return;
       }
 
+      if (req.method === "GET" && req.url === "/v1/agent/demo") {
+        const root = process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const benchmark = JSON.parse(
+          readFileSync(join(root, "benchmark", "real-100-latest.json"), "utf8"),
+        );
+        const d = benchmark.deployments;
+        if (!d?.agent || !d?.wallet || !d?.target || !d?.policyHash) {
+          throw new Error("real benchmark agent configuration is unavailable");
+        }
+        const toolRequest: ToolRequest = {
+          agent: d.agent,
+          wallet: d.wallet,
+          tool: "demo",
+          action: "ping",
+          args: [123],
+          value: 0n,
+          nonce: 50n,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + 900),
+          policyHash: d.policyHash,
+        };
+        const definition = context.tools.get("demo:ping");
+        if (!definition) throw new Error("demo:ping tool is not registered");
+        const resolved = resolveToolRequest(definition, toolRequest);
+        const intent = resolved.intent;
+        const risk = await assessRisk(
+          { intent, chainId: context.chainId },
+          context.riskProviders ?? [],
+        );
+        const domain = buildIntentDomain(context.chainId, context.verifyingContract);
+        const digest = intentDigest(intent, context.chainId, context.verifyingContract);
+        send(res, 200, {
+          ok: true,
+          stage: "AGENT_REQUEST → CANONICAL_INTENT → RISK_INTELLIGENCE",
+          toolRequest: {
+            tool: toolRequest.tool,
+            action: toolRequest.action,
+            args: toolRequest.args,
+            agent: toolRequest.agent,
+            wallet: toolRequest.wallet,
+          },
+          intent: serializeIntent(intent),
+          digest,
+          typedData: {
+            domain: {
+              name: domain.name,
+              version: domain.version,
+              chainId: domain.chainId.toString(),
+              verifyingContract: domain.verifyingContract,
+            },
+            primaryType: "ExecutionIntent",
+            types: EXECUTION_INTENT_TYPES,
+            message: {
+              agent: intent.agent,
+              wallet: intent.wallet,
+              target: intent.target,
+              value: intent.value.toString(),
+              calldataHash: ethers.keccak256(intent.data),
+              nonce: intent.nonce.toString(),
+              deadline: intent.deadline.toString(),
+              policyHash: intent.policyHash,
+            },
+          },
+          risk,
+          next: risk.status === "CLEAR"
+            ? "AGENT_SIGNATURE_REQUIRED"
+            : "EXECUTION_BLOCKED",
+        });
+        return;
+      }
+
       if (req.method === "GET" && req.url === "/v1/risk/demo") {
         const root = process.env.CWF_PROJECT_ROOT ?? process.cwd();
         const benchmark = JSON.parse(
