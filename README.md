@@ -6,6 +6,8 @@ Agent Guardian CWF is a transaction security layer for AI agents interacting wit
 
 The current implementation combines deterministic on-chain authorization with a small off-chain request layer.
 
+**Security documentation:** [Threat Model](THREAT_MODEL.md) — STRIDE analysis, attack trees, security invariants, control-to-code mapping, residual risks, and validation status.
+
 ## Execution flow
 
 1. An agent creates a ToolRequest.
