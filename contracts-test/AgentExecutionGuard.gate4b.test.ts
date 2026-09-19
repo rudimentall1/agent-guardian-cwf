@@ -276,6 +276,49 @@ describe("Gate 4B: daily limits and owner approvals вЂ” full stack", functio
       const approval2 = await signApproval(limited,1n,1n,DEADLINE);
       await expect(executeWithApproval(limited,1n,1n,DEADLINE,DEADLINE,"0x",intent2,approval2)).to.be.revertedWithCustomError(guard,"DailyLimitExceeded");
     });
+    it("a policy approval is blocked while the policy is revoked and can be used after explicit reactivation", async function () {
+      const policy = await createPolicy(ethers.parseEther("10"), 0n);
+      const value = 1n;
+      const intent = await signIntent(policy, value, 0n);
+      const approval = await signApproval(policy, value, 0n, DEADLINE);
+
+      const policyId = await policyRegistry.policyIdOfHash(policy);
+      await policyRegistry.connect(owner).revokePolicy(policyId);
+
+      await expect(
+        executeWithApproval(policy, value, 0n, DEADLINE, DEADLINE, "0x", intent, approval)
+      ).to.be.revertedWithCustomError(guard, "PolicyNotActive");
+
+      expect(await guard.nextNonce(agentAddress)).to.equal(0n);
+      expect((await guard.dailySpend(policy)).spent).to.equal(0n);
+
+      await policyRegistry.connect(owner).reactivatePolicy(policyId);
+
+      await executeWithApproval(policy, value, 0n, DEADLINE, DEADLINE, "0x", intent, approval);
+      expect(await guard.nextNonce(agentAddress)).to.equal(1n);
+      expect((await guard.dailySpend(policy)).spent).to.equal(value);
+    });
+    it("an owner approval remains pending across pause/unpause but cannot execute while paused", async function () {
+      const policy = await createPolicy(ethers.parseEther("10"), 0n);
+      const value = 1n;
+      const intent = await signIntent(policy, value, 0n);
+      const approval = await signApproval(policy, value, 0n, DEADLINE);
+
+      await guard.connect(owner).pauseAgent(agentAddress);
+
+      await expect(
+        executeWithApproval(policy, value, 0n, DEADLINE, DEADLINE, "0x", intent, approval)
+      ).to.be.revertedWithCustomError(guard, "AgentExecutionPaused").withArgs(agentAddress);
+
+      expect(await guard.nextNonce(agentAddress)).to.equal(0n);
+      expect((await guard.dailySpend(policy)).spent).to.equal(0n);
+
+      await guard.connect(owner).unpauseAgent(agentAddress);
+
+      await executeWithApproval(policy, value, 0n, DEADLINE, DEADLINE, "0x", intent, approval);
+      expect(await guard.nextNonce(agentAddress)).to.equal(1n);
+      expect((await guard.dailySpend(policy)).spent).to.equal(value);
+    });
   });
 });
 
