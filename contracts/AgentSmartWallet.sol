@@ -15,7 +15,9 @@ contract AgentSmartWallet is ReentrancyGuard {
     /// @notice Immutable agent identity this wallet is exclusively bound to.
     /// The Guard must match this address before any agent-authorized execution.
     address public immutable agent;
-    /// @notice Immutable after deployment. The owner cannot install a second execution path\n    /// that bypasses AgentExecutionGuard policy checks.\n    address public immutable executionGuard;
+    /// @notice Immutable after deployment. The owner cannot install a second execution path
+    /// that bypasses AgentExecutionGuard policy checks.
+    address public immutable executionGuard;
 
     error ZeroAddress();
     error NotOwner();
