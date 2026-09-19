@@ -16,6 +16,22 @@ describe("AgentSmartWallet: execution boundary", function () {
     await expect(wallet.connect(attacker).execute(await target.getAddress(), 0n, "0x")).to.be.revertedWithCustomError(wallet, "NotExecutionGuard");
   });
 
+  it("keeps the execution guard immutable", async function () {
+    const [owner, attacker] = await ethers.getSigners();
+    const Guard = await ethers.getContractFactory("AgentExecutionGuard");
+    const guard = await Guard.deploy(owner.address, owner.address);
+    await guard.waitForDeployment();
+    const Wallet = await ethers.getContractFactory("AgentSmartWallet");
+    const wallet = await Wallet.deploy(owner.address, await guard.getAddress(), owner.address);
+    await wallet.waitForDeployment();
+
+    expect(await wallet.executionGuard()).to.equal(await guard.getAddress());
+
+    const selector = ethers.id("setExecutionGuard(address)").slice(0, 10);
+    const calldata = selector + ethers.AbiCoder.defaultAbiCoder().encode(["address"], [attacker.address]).slice(2);
+    await expect(owner.sendTransaction({ to: await wallet.getAddress(), data: calldata })).to.be.reverted;
+    expect(await wallet.executionGuard()).to.equal(await guard.getAddress());
+  });
   it("lets the owner recover native ETH without going through the agent", async function () {
     const [owner] = await ethers.getSigners();
     const Guard = await ethers.getContractFactory("AgentExecutionGuard");

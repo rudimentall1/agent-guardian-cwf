@@ -15,7 +15,7 @@ contract AgentSmartWallet is ReentrancyGuard {
     /// @notice Immutable agent identity this wallet is exclusively bound to.
     /// The Guard must match this address before any agent-authorized execution.
     address public immutable agent;
-    address public executionGuard;
+    /// @notice Immutable after deployment. The owner cannot install a second execution path\n    /// that bypasses AgentExecutionGuard policy checks.\n    address public immutable executionGuard;
 
     error ZeroAddress();
     error NotOwner();
@@ -71,12 +71,6 @@ contract AgentSmartWallet is ReentrancyGuard {
         return ret;
     }
 
-    function setExecutionGuard(address newGuard) external onlyOwner {
-        if (newGuard == address(0)) revert ZeroAddress();
-        address previous = executionGuard;
-        executionGuard = newGuard;
-        emit ExecutionGuardChanged(previous, newGuard);
-    }
 
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
