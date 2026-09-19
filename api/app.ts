@@ -1,4 +1,6 @@
-﻿import { IncomingMessage, ServerResponse } from "node:http";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ethers } from "ethers";
 import {
   EXECUTION_INTENT_TYPES,
@@ -179,6 +181,14 @@ function validateSignature(value: unknown): string {
 export function createCwfApiHandler(context: CwfApiContext) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     try {
+      if (req.method === "GET" && req.url === "/v1/benchmark") {
+        const root = process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const real100 = JSON.parse(readFileSync(join(root, "benchmark", "real-100-latest.json"), "utf8"));
+        const benchmark10k = JSON.parse(readFileSync(join(root, "benchmark", "latest.json"), "utf8"));
+        send(res, 200, { real100, benchmark10k });
+        return;
+      }
+
       if (req.method === "GET" && req.url === "/health") {
         send(res, 200, {
           ok: true,

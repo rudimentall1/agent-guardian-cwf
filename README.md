@@ -1,4 +1,4 @@
-﻿# Agent Guardian CWF
+# Agent Guardian CWF
 
 ## Security boundary for autonomous AI agent transactions
 
@@ -166,9 +166,9 @@ Run the demo with:
 
 The Solidity and Hardhat suite currently reports:
 
-**190 passing**
+**199 passing**
 
-The CWF runtime and API suite reports **13 passing**, for **203 tests total**.
+The CWF runtime and API suite reports **15 passing**, for **214 checks total**.
 
 The tests cover adversarial cases including:
 
@@ -225,7 +225,7 @@ The benchmark is an authorization-evaluation suite, not 10,000 mined blockchain 
 
 ## Arbitrum Sepolia
 
-The repository contains a recorded Arbitrum Sepolia deployment from an earlier contract version. It must be redeployed after the canonical wallet-binding security fix before being presented as the current deployment.
+The repository contains a reproducible fresh Arbitrum Sepolia benchmark deployment generated from the current contracts. The recorded real-chain benchmark is evidence for the current security boundary.
 
 Network: Arbitrum Sepolia
 
@@ -234,6 +234,30 @@ Chain ID: 421614
 Deployment addresses are stored in:
 
 `deployments.json`
+
+## Security evidence dashboard
+
+The repository includes a React/Vite dashboard backed directly by the benchmark artifacts. It is not populated with hardcoded security metrics.
+
+The dashboard exposes:
+
+- the 10,000 authorization benchmark
+- 100 real Arbitrum Sepolia executions
+- 50 ALLOW / 50 BLOCK outcomes
+- false-authorization and false-block rates
+- real-chain latency and gas metrics
+- recent mined transaction hashes with explorer links
+- fresh deployment addresses
+
+Build the dashboard with:
+
+`npm run build:dashboard`
+
+Run the combined API and dashboard server after building:
+
+`npm run start:api`
+
+The server exposes benchmark data at `GET /v1/benchmark` and serves the dashboard from the same origin.
 
 ## Local development
 
