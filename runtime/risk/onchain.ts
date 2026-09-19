@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { RiskContext, RiskProvider, RiskAssessment } from "./types";
+import { RiskContext, RiskProvider, RiskAssessment, RiskSignal } from "./types";
 
 export type OnChainRiskOptions = { rpcUrl: string; name?: string };
 
@@ -33,7 +33,7 @@ export class OnChainRiskProvider implements RiskProvider {
 
     const hasCode = code !== "0x";
     const selector = context.intent.data.length >= 10 ? context.intent.data.slice(0, 10) : "0x";
-    const signals = [
+    const signals: RiskSignal[] = [
       { source: this.name, category: "contract", severity: hasCode ? "INFO" as const : "MEDIUM" as const,
         confidence: 1, code: hasCode ? "TARGET_HAS_CODE" : "TARGET_HAS_NO_CODE",
         message: hasCode ? "Target has deployed bytecode." : "Target has no deployed bytecode.",

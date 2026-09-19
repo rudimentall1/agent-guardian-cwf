@@ -22,7 +22,7 @@ export const EXECUTION_INTENT_TYPES = {
     { name: "deadline", type: "uint256" },
     { name: "policyHash", type: "bytes32" },
   ],
-} as const;
+};
 
 export function canonicalizeIntent(intent: TransactionIntent) {
   if (!ethers.isAddress(intent.agent)) {

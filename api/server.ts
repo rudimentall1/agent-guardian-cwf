@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
@@ -15,8 +16,8 @@ if(!verifyingContract)throw new Error("CWF_GUARD_ADDRESS is required");
 if(!target)throw new Error("CWF_TOOL_TARGET is required");
 const recordTool=defineContractTool("demo","record",target,"function record(uint256 id)");
 const tools=new Map([["demo:record",recordTool]]);
-const riskRpc=process.env.CWF_RISK_RPC_URL;
-const riskProviders=riskRpc?[new OnChainRiskProvider({rpcUrl:riskRpc})]:[];
+const riskRpc=process.env.CWF_RISK_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
+const riskProviders=[new OnChainRiskProvider({rpcUrl:riskRpc})];
 const apiHandler=createCwfApiHandler({tools,chainId,verifyingContract,riskProviders});
 const mime:Record<string,string>={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".svg":"image/svg+xml",".json":"application/json"};
 const server=createServer(async(req:IncomingMessage,res:ServerResponse)=>{

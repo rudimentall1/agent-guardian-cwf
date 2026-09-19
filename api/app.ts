@@ -113,7 +113,7 @@ function asToolRequest(value: unknown): ToolRequest {
     tool: input.tool as string,
     action: input.action as string,
     args: input.args as readonly unknown[],
-    value: (input.value as string | undefined) ?? "0",
+    value: BigInt((input.value as string | undefined) ?? "0"),
     nonce: BigInt(input.nonce as string),
     deadline: BigInt(input.deadline as string),
     policyHash: input.policyHash as string,
@@ -210,6 +210,37 @@ export function createCwfApiHandler(context: CwfApiContext) {
           typeof input.deterministicBlockReason === "string" ? input.deterministicBlockReason : undefined,
         );
         send(res, 200, { ok: true, assessment: result });
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/v1/risk/demo") {
+        const root = process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const benchmark = JSON.parse(
+          readFileSync(join(root, "benchmark", "real-100-latest.json"), "utf8"),
+        );
+        const target = benchmark.deployments?.target;
+        if (!target) throw new Error("real benchmark target is unavailable");
+        const intent: TransactionIntent = {
+          agent: ethers.ZeroAddress,
+          wallet: ethers.ZeroAddress,
+          target,
+          value: 0n,
+          data: "0x12345678",
+          nonce: 0n,
+          deadline: BigInt(Math.floor(Date.now() / 1000) + 300),
+          policyHash: ethers.ZeroHash,
+        };
+        const assessment = await assessRisk(
+          { intent, chainId: BigInt(benchmark.chainId) },
+          context.riskProviders ?? [],
+        );
+        send(res, 200, {
+          ok: true,
+          source: "real-100-latest.json",
+          chainId: benchmark.chainId,
+          target,
+          assessment,
+        });
         return;
       }
 
@@ -392,12 +423,10 @@ export function createCwfApiHandler(context: CwfApiContext) {
           request,
         );
 
+        const receipt = result as { hash?: string; transactionHash?: string } | null | undefined;
         send(res, 200, {
           ok: true,
-          transactionHash:
-            result?.hash ??
-            result?.transactionHash ??
-            null,
+          transactionHash: receipt?.hash ?? receipt?.transactionHash ?? null,
         });
 
         return;
