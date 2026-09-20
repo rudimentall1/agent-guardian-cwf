@@ -2,13 +2,9 @@
 
 ## Autonomous AI Agent Security Layer for Web3
 
-**Demo:** https://youtu.be/z7_GXu9Phwc
+Agent Guardian is an on-chain security layer for autonomous agents that need to execute blockchain transactions without giving the agent unlimited authority over the wallet.
 
-Agent Guardian is an on-chain security layer for autonomous agents that need to execute blockchain transactions.
-
-The problem is straightforward. Giving an AI agent a private key with unlimited wallet access gives the agent too much authority. If the key is compromised or the agent makes a bad decision, the wallet has very few boundaries left.
-
-Agent Guardian puts those boundaries in the contracts.
+The agent decides what it wants to do. The Guard decides whether the exact signed intent is authorized.
 
 ## The security boundary
 
@@ -16,110 +12,188 @@ Agent Guardian puts those boundaries in the contracts.
 AI Agent
    |
    v
-Signed Intent
+ToolRequest
+   |
+   v
+Canonical TransactionIntent
+   |
+   | EIP-712
+   v
+Risk Intelligence (optional, fail-closed)
    |
    v
 AgentExecutionGuard
    |
    +-- Agent identity
    +-- Policy
+   +-- Exact target + selector
    +-- Per-transaction limit
    +-- Daily limit
    +-- Owner approval
    +-- Nonce / deadline
-   +-- Recovery state
+   +-- Recovery / pause state
    |
    v
 AgentSmartWallet
    |
    v
-Arbitrum
+Target contract / recipient
 ```
 
-The agent decides what it wants to do. The contracts decide whether that action is allowed.
+The security boundary is on-chain. Off-chain risk intelligence can add context and fail closed, but it cannot override a deterministic Guardian block.
 
 ## What is implemented
 
 ### AgentRegistry
 
-Stores the agent identity and owner, handles activation and deactivation, ownership transfer and recovery controls.
+Stores the agent identity and owner, handles activation/deactivation, ownership transfer and recovery controls.
 
-The registry supports EOA agents and ERC-1271 contract based identities.
+The registry supports EOA and ERC-1271 agent identities and binds one canonical custody wallet to each agent.
 
 ### PolicyRegistry
 
-Defines what the agent can do. Policies support exact target and function selector pairs, native transfer targets, per-transaction limits, daily limits, owner approval thresholds and validity windows.
+Policies are immutable mandates. They support:
+
+- exact (target, selector) function permissions
+- separate native-transfer target permissions
+- per-transaction limits
+- daily limits
+- owner approval thresholds
+- validity windows
+- immutable agent binding
 
 ### AgentExecutionGuard
 
-Checks the signed execution intent before forwarding it.
+The Guard validates:
 
-The Guard validates the agent, signature, nonce, deadline, policy, exact target and selector, spending limits and owner approval when required.
+- registered and active agent
+- live policy owner binding
+- policy validity and time window
+- exact target and selector authorization
+- transaction value
+- daily spending limit
+- nonce
+- deadline
+- EIP-712 agent signature
+- owner approval when required
+- canonical wallet, wallet owner, agent and Guard bindings
+- pause state
+- replay protection
+
+Any mismatch reverts before the target execution can succeed.
 
 ### AgentSmartWallet
 
-Holds funds used by wallet-custody execution. The wallet is immutably tied to one agent and one Guard, while `AgentRegistry` records exactly one canonical wallet per agent. The Guard verifies those bindings and the wallet's current owner before execution.
+The SmartWallet is the custody layer for native value. It is immutably bound to one agent and one Guard. The registry records the canonical wallet, and the Guard verifies the live wallet owner before custody execution.
 
-The Guard itself does not hold the user's funds.
+The Guard itself does not hold user funds.
 
-## Wallet custody
+## Risk Intelligence
 
-Native value for the wallet-custody path comes from `AgentSmartWallet`.
+The runtime includes a fail-closed risk layer.
 
-The regular `execute` and `executeWithApproval` entry points do not accept a nonzero value. Native transfers use `executeFromWallet` and `executeWithApprovalFromWallet` instead.
+The current real provider inspects the target on Arbitrum Sepolia for:
 
-This keeps the custody model explicit. The Guard enforces the policy, while the SmartWallet holds the funds.
+- deployed bytecode
+- transaction history
+- chain ID
+- calldata selector/size
+- intent value
 
-## Example flow
+Provider failure produces REVIEW with degraded=true; execution is not allowed through the HTTP execution path. Deterministic Guard enforcement remains the final authority.
 
-The current demo uses a policy with these limits:
+This is deliberately not described as an AI risk model. The current implementation is deterministic on-chain intelligence plus a fail-closed provider interface that can be extended later.
 
-- 0.5 ETH maximum per transaction
-- 0.6 ETH daily limit
-- 0.3 ETH owner approval threshold
+## Real security evidence
 
-A 0.1 ETH transfer succeeds without owner approval.
+### 10,000 authorization checks
 
-A 0.4 ETH transfer is rejected without the required owner approval and succeeds after the owner signs the approval.
+The local benchmark evaluates the real AgentExecutionGuard against 10,000 deterministic signed-intent cases:
 
-A later 0.2 ETH transfer is rejected because the daily limit would be exceeded.
+- 1,000 expected ALLOW
+- 9,000 expected BLOCK
+- false authorization rate: 0
+- false block rate: 0
+- p50 authorization latency: ~2.11 ms
+- p95: ~3.59 ms
+- p99: ~9.37 ms
 
-The demo then shows the owner pause path and the separate recovery guardian path.
+This is an authorization benchmark, not 10,000 mined blockchain transactions.
 
-## Testing
+### 100 real Arbitrum Sepolia executions
 
-The current suite has **196 passing tests**.
+The recorded benchmark contains:
 
-Coverage is configured in CI; the percentages are intentionally not hard-coded here because the suite has changed since the last recorded coverage snapshot.
+- 100 mined executions
+- 50 successful ALLOW transactions
+- 50 reverted BLOCK transactions
+- false ALLOW: 0
+- false BLOCK: 0
+- 8,216,729 total gas
+- 82,167 average gas
+- p50 latency: ~3.02s
+- p95: ~3.24s
+- p99: ~7.52s
 
-The tests include replay protection, calldata and field mutation, exact target and selector authorization, spending limits, owner approvals, reentrancy, ERC-1271 identities, wallet custody and recovery scenarios.
+The evidence is stored in benchmark/real-100-latest.json.
 
-GitHub Actions also runs compile and tests, coverage and Slither. The latest successful CI run passed all three jobs.
+### Live signed-intent tamper demo
+
+The one-click demo performs a real ALLOW execution, then creates a new signed intent and modifies its calldata before submitting the original signature.
+
+The Guard rejects the modified calldata with InvalidSignature.
+
+The demo verifies that:
+
+- the original real transaction was mined
+- the modified intent was not executed
+- the second transaction was never sent
+- the Guardian nonce did not advance from the blocked tampered attempt
+
+## Automated security validation
+
+Current CI verifies:
+
+- 199 Solidity/Hardhat contract tests
+- 20 runtime/API tests
+- compile + test
+- coverage
+- Slither static analysis
+
+Current coverage report:
+
+- statements: 96.21%
+- branches: 79.74%
+- functions: 90.79%
+- lines: 94.30%
+
+The latest CI Slither run passes with fail-on: high.
+
+The suite includes adversarial cases for replay, cross-chain/cross-contract replay, target/selector/calldata/value mutation, policy mismatch, owner-approval abuse, daily-limit abuse, reentrancy, ERC-1271 signer rotation, wallet substitution, ownership handoff, recovery and pause controls.
+
+Seeded randomized Hardhat tests are included. Foundry/Echidna and an independent audit are future hardening work.
 
 ## Deployment
 
-The deployment target is **Arbitrum Sepolia**, chain ID `421614`. The recorded addresses predate the current canonical wallet-binding contract changes and require redeployment before final submission.
+Network: **Arbitrum Sepolia**
 
-Contract addresses are stored in [`deployments.json`](../../deployments.json).
+Chain ID: **421614**
 
-## Current scope
+Two current deployments are recorded separately in deployments.json:
 
-This repository focuses on the on-chain enforcement layer.
+- real100Benchmark
+- agentDemo
 
-It does not include an off-chain AI risk-scoring service, SDK, monitoring dashboard, Robinhood Chain deployment or an independent security audit.
+The target contract is shared between both evidence sets.
 
-Real Foundry/Echidna property-based fuzzing has also not been run yet. The current fuzz test file uses seeded randomized test cases in Hardhat.
+## Current product scope
 
-These are known limitations, not features being presented as finished.
+The current hackathon product is the on-chain execution security boundary plus a small developer-facing runtime/API and evidence dashboard.
 
-## Why this matters
+It does not claim a production SDK, external connector ecosystem, independent audit, monitoring/alerting system or multi-chain production rollout.
 
-Autonomous agents need a different security model from a normal user signing occasional transactions.
+## Current status
 
-The useful part of Agent Guardian is the boundary between the agent's decision and actual execution. The agent can operate within defined limits, while the owner keeps control over permissions, approvals and emergency recovery.
+**Security core implemented and validated.**
 
-## Why Arbitrum
-
-Arbitrum gives the project a practical environment for low-cost execution while staying close to the Ethereum security model.
-
-The current prototype is intentionally focused. The goal is to make the execution boundary reliable before adding off-chain services and developer tooling.
+The remaining hackathon work is product polish, final end-to-end verification, submission material and judge-facing demonstration.
