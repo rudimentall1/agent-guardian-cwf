@@ -170,10 +170,10 @@ The latest successful CI run verifies:
 
 Current CI coverage:
 
-- statements: 96.21%
-- branches: 79.74%
-- functions: 90.79%
-- lines: 94.30%
+- statements: 97.65%
+- branches: 87.07%
+- functions: 92.41%
+- lines: 95.35%
 
 Slither passes with `fail-on: high`. The run reports 26 detector findings, primarily expected mock-contract findings and non-blocking code-quality/security heuristics; no high-severity finding blocks the build.
 
