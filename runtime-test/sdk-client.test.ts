@@ -120,6 +120,107 @@ describe("CWF Agent Guardian SDK", () => {
       signature,
     )).to.equal(agent.address);
   });
+  it("runs the full guarded execution path and stops before execute on BLOCK", async () => {
+    const calls: string[] = [];
+    const intent = {
+      agent: agent.address,
+      wallet: wallet.address,
+      target,
+      value: 0n,
+      data: "0x1234",
+      nonce: 7n,
+      deadline: 9999999999n,
+      policyHash,
+    };
+    const domain = {
+      name: "AgentExecutionGuard",
+      version: "1",
+      chainId: 421614n,
+      verifyingContract: target,
+    };
+    const types = {
+      ExecutionIntent: [
+        { name: "agent", type: "address" },
+        { name: "wallet", type: "address" },
+        { name: "target", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "calldataHash", type: "bytes32" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+        { name: "policyHash", type: "bytes32" },
+      ],
+    };
+    const preparedBody = {
+      ok: true,
+      intent: {
+        ...intent,
+        value: "0",
+        nonce: "7",
+        deadline: "9999999999",
+      },
+      typedData: {
+        domain,
+        primaryType: "ExecutionIntent",
+        types,
+        message: {
+          ...intent,
+          value: "0",
+          calldataHash: ethers.keccak256(intent.data),
+          nonce: "7",
+          deadline: "9999999999",
+        },
+      },
+      digest: ethers.TypedDataEncoder.hash(domain, types, {
+        ...intent,
+        calldataHash: ethers.keccak256(intent.data),
+      }),
+    };
+    const client = new AgentGuardianClient({
+      baseUrl: "http://guardian.test",
+      fetchImpl: (async (url) => {
+        calls.push(String(url));
+        if (String(url).endsWith("/v1/agent/prepare")) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return preparedBody;
+            },
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return {
+              ok: true,
+              decision: "BLOCK",
+              reason: "risk_review",
+            };
+          },
+        };
+      }) as typeof fetch,
+    });
+
+    const result = await client.guardedExecute({
+      agent: agent.address,
+      wallet: wallet.address,
+      tool: "demo",
+      action: "ping",
+      args: [123],
+      nonce: "7",
+      deadline: "9999999999",
+      policyHash,
+    }, agent);
+
+    expect(result.preflight.decision).to.equal("BLOCK");
+    expect(result.execution.decision).to.equal("BLOCK");
+    expect(calls).to.deep.equal([
+      "http://guardian.test/v1/agent/prepare",
+      "http://guardian.test/v1/intent/preflight",
+    ]);
+  });
+
   it("sends signed intents to preflight and execution endpoints", async () => {
     const calls: string[] = [];
     const client = new AgentGuardianClient({

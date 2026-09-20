@@ -40,6 +40,8 @@ The integration path is therefore:
 
 `Agent -> AgentGuardianClient -> ToolRequest -> Canonical Intent -> Risk -> EIP-712 -> Guardian -> Wallet -> Target`
 
+The SDK also exposes `guardedExecute(request, signer)`, which performs prepare, EIP-712 signing, Guardian preflight and execution as one fail-closed call. If preflight returns BLOCK, the SDK does not call the execution endpoint.
+
 See `runtime-test/sdk-client.test.ts` for the reusable integration contract exercised against the same public API surface.
 
 For a real Arbitrum Sepolia end-to-end integration run, start the API with the deployed Guard address configured in `CWF_GUARD_ADDRESS`, then run `npm run demo:agent-sdk`. The demo performs a real agent ToolRequest, live risk + exact target simulation, EIP-712 signing, Guardian preflight, real on-chain execution, and a second preflight with modified calldata that is blocked without submission.

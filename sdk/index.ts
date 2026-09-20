@@ -99,6 +99,26 @@ export class AgentGuardianClient {
     return { prepared, signature };
   }
 
+  async guardedExecute(
+    request: ToolRequest,
+    signer: ethers.Signer,
+  ): Promise<{
+    prepared: PrepareResponse;
+    signature: string;
+    preflight: DecisionResponse;
+    execution: DecisionResponse;
+  }> {
+    const { prepared, signature } = await this.prepareAndSign(request, signer);
+    const preflight = await this.preflight(prepared.intent, signature);
+
+    if (preflight.decision !== "ALLOW") {
+      return { prepared, signature, preflight, execution: preflight };
+    }
+
+    const execution = await this.execute(prepared.intent, signature);
+    return { prepared, signature, preflight, execution };
+  }
+
   private serializeIntent(intent: PreparedIntent) {
     return {
       agent: intent.agent,
