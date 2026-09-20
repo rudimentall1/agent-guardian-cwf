@@ -361,7 +361,7 @@ export function createCwfApiHandler(context: CwfApiContext) {
           wallet: ethers.ZeroAddress,
           target,
           value: 0n,
-          data: "0x12345678",
+          data: new ethers.Interface(["function ping(uint256 id)"]).encodeFunctionData("ping", [1]),
           nonce: 0n,
           deadline: BigInt(Math.floor(Date.now() / 1000) + 300),
           policyHash: ethers.ZeroHash,

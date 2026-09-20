@@ -99,8 +99,9 @@ The current real provider inspects the target on Arbitrum Sepolia for:
 - chain ID
 - calldata selector/size
 - intent value
+- live eth_call simulation of the exact target calldata
 
-Provider failure produces REVIEW with degraded=true; execution is not allowed through the HTTP execution path. Deterministic Guard enforcement remains the final authority.
+A reverted target simulation produces REVIEW; provider failure produces REVIEW with degraded=true. Execution is not allowed through the HTTP execution path. Deterministic Guard enforcement remains the final authority.
 
 This is deliberately not described as an AI risk model. The current implementation is deterministic on-chain intelligence plus a fail-closed provider interface that can be extended later.
 
@@ -162,10 +163,10 @@ Current CI verifies:
 
 Current coverage report:
 
-- statements: 96.21%
-- branches: 79.74%
-- functions: 90.79%
-- lines: 94.30%
+- statements: 97.65%
+- branches: 87.07%
+- functions: 92.41%
+- lines: 95.35%
 
 The latest CI Slither run passes with fail-on: high.
 

@@ -10,7 +10,7 @@ function context(chainId: bigint, target: string): RiskContext {
     chainId,
     intent: {
       agent: ethers.ZeroAddress, wallet: ethers.ZeroAddress, target, value: 0n,
-      data: "0x12345678", nonce: 0n, deadline: 9999999999n,
+      data: new ethers.Interface(["function ping(uint256 id)"]).encodeFunctionData("ping", [1]), nonce: 0n, deadline: 9999999999n,
       policyHash: ethers.keccak256(ethers.toUtf8Bytes("policy")),
     },
   };
@@ -44,6 +44,7 @@ describe("CWF risk intelligence layer", function () {
     expect(result.degraded).to.equal(false);
     expect(result.signals.some((s) => s.code === "TARGET_HAS_CODE")).to.equal(true);
     expect(result.signals.some((s) => s.code === "CALLDATA_INSPECTED")).to.equal(true);
+    expect(result.signals.some((s) => s.code === "TARGET_CALL_SIMULATION_OK")).to.equal(true);
   });
 
   it("fails closed when the RPC provider is unavailable", async function () {

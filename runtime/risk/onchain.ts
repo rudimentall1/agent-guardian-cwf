@@ -33,6 +33,16 @@ export class OnChainRiskProvider implements RiskProvider {
 
     const hasCode = code !== "0x";
     const selector = context.intent.data.length >= 10 ? context.intent.data.slice(0, 10) : "0x";
+    let simulationOk = false;
+    let simulationReason = "";
+    if (hasCode) {
+      try {
+        await this.provider.call({ to: target, data: context.intent.data, value: context.intent.value });
+        simulationOk = true;
+      } catch (error) {
+        simulationReason = error instanceof Error ? error.message : "target call reverted";
+      }
+    }
     const signals: RiskSignal[] = [
       { source: this.name, category: "contract", severity: hasCode ? "INFO" as const : "MEDIUM" as const,
         confidence: 1, code: hasCode ? "TARGET_HAS_CODE" : "TARGET_HAS_NO_CODE",
@@ -48,12 +58,18 @@ export class OnChainRiskProvider implements RiskProvider {
         code: "CALLDATA_INSPECTED", message: "Intent calldata was inspected at the transaction boundary.",
         evidence: { selector, calldataBytes: (context.intent.data.length - 2) / 2, valueWei: context.intent.value.toString() },
         observedAt: new Date().toISOString() },
+      { source: this.name, category: "simulation", severity: simulationOk ? "INFO" as const : "HIGH" as const,
+        confidence: simulationOk ? 0.95 : 0.9,
+        code: simulationOk ? "TARGET_CALL_SIMULATION_OK" : "TARGET_CALL_SIMULATION_REVERTED",
+        message: simulationOk ? "The exact target calldata was accepted by an eth_call simulation." : "The exact target calldata reverted during eth_call simulation.",
+        evidence: { simulated: hasCode, reverted: hasCode && !simulationOk, reason: simulationReason || null },
+        observedAt: new Date().toISOString() },
     ];
 
     return {
-      status: hasCode ? "CLEAR" : "REVIEW",
-      score: hasCode ? 10 : 55,
-      confidence: hasCode ? 0.9 : 0.75,
+      status: hasCode && simulationOk ? "CLEAR" : "REVIEW",
+      score: hasCode && simulationOk ? 10 : hasCode ? 70 : 55,
+      confidence: hasCode && simulationOk ? 0.95 : 0.8,
       degraded: false,
       signals,
     };
