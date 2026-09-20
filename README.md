@@ -42,6 +42,8 @@ The integration path is therefore:
 
 See `runtime-test/sdk-client.test.ts` for the reusable integration contract exercised against the same public API surface.
 
+For a real Arbitrum Sepolia end-to-end integration run, start the API with the deployed Guard address configured in `CWF_GUARD_ADDRESS`, then run `npm run demo:agent-sdk`. The demo performs a real agent ToolRequest, live risk + exact target simulation, EIP-712 signing, Guardian preflight, real on-chain execution, and a second preflight with modified calldata that is blocked without submission.
+
 ### AgentExecutionGuard
 
 `contracts/AgentExecutionGuard.sol` performs the final authorization checks before execution.

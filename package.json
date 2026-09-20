@@ -19,7 +19,8 @@
     "coverage": "hardhat coverage",
     "build:dashboard": "vite build",
     "dashboard": "vite",
-    "start:api": "ts-node api/server.ts"
+    "start:api": "ts-node api/server.ts",
+    "demo:agent-sdk": "ts-node scripts/agent-sdk-demo.ts"
   },
   "repository": {
     "type": "git",
