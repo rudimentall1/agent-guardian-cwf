@@ -1,94 +1,77 @@
 # Agent Guardian Demo Flow
 
-## Live demo
+## Protocol walkthrough
 
 Network: Arbitrum Sepolia
 
 Chain ID: 421614
 
-The current demo follows the same security path used by the contracts. It shows both successful execution and actions that are rejected by the policy.
+The repository contains two different demonstrations:
 
-## Step 1: Deploy the stack
+1. a protocol walkthrough covering wallet custody, limits, approvals, pause and recovery;
+2. a dedicated one-click judge demo covering a real signed agent intent, live risk intelligence, real-chain execution and calldata tampering.
 
-The demo deploys:
+They are intentionally separate so the judge demo stays short and focused on the core security boundary.
 
-- `AgentRegistry`
-- `PolicyRegistry`
-- `AgentExecutionGuard`
-- `AgentSmartWallet`
-- a simple target contract used as the transaction destination
+## Protocol walkthrough
 
-The SmartWallet is deployed with the agent and Guard addresses. The owner then binds it as the agent's canonical wallet in `AgentRegistry`, so execution cannot substitute another wallet for the signed intent.
+The full-stack contract tests exercise:
 
-## Step 2: Register the agent
+- AgentRegistry registration and lifecycle
+- PolicyRegistry immutable mandates
+- AgentSmartWallet custody
+- per-transaction limits
+- daily spending limits
+- owner approval thresholds
+- pause and recovery controls
+- ownership handoff and epoch invalidation
 
-The owner registers the agent with an EIP-712 signature.
-
-The registry records the agent as active and binds it to the owner.
-
-## Step 3: Create the policy
-
-The owner creates a policy with these values:
+A representative policy uses:
 
 - maximum transaction value: 0.5 ETH
 - daily limit: 0.6 ETH
 - approval threshold: 0.3 ETH
-- authorized native-transfer target: the demo target contract
 
-## Step 4: Fund the SmartWallet
+A 0.1 ETH transfer can execute without owner approval.
 
-The owner sends 2 ETH to the `AgentSmartWallet`.
+A 0.4 ETH transfer requires a fresh owner approval.
 
-The Guard remains unfunded. The agent execution path uses the SmartWallet balance instead.
+A later 0.2 ETH transfer is blocked because it would exceed the daily limit.
 
-## Step 5: Small transfer succeeds
+Pause and recovery then disable protected execution.
 
-The agent signs a 0.1 ETH execution intent.
+## One-click judge security demo
 
-The relayer submits it.
+The current dedicated deployment is recorded as `agentDemo` in `deployments.json`.
 
-The amount is below the owner approval threshold, so the Guard accepts the intent and the SmartWallet funds the transfer.
+The explicit button runs this sequence:
 
-## Step 6: Larger transfer is rejected
+1. **AGENT_REQUEST**  a demo agent requests `ping(123)`.
+2. **CANONICAL_INTENT**  the runtime resolves the exact target, calldata, nonce and policy.
+3. **RISK_INTELLIGENCE**  the live Arbitrum Sepolia provider inspects the target and returns a fail-closed assessment.
+4. **AGENT_SIGNATURE**  the dedicated agent signer produces an EIP-712 signature.
+5. **GUARDIAN_PREFLIGHT**  the real Guard accepts the exact signed intent in a static call.
+6. **REAL_TX**  the relayer sends the real transaction through `AgentExecutionGuard`.
+7. **ATTACK**  a fresh signed `ping(123)` intent is modified to `ping(999)` without resigning.
+8. **GUARDIAN_BLOCK**  the Guard rejects the modified calldata with `InvalidSignature`.
 
-The agent signs a 0.4 ETH intent.
+The endpoint verifies that:
 
-The amount is below the 0.5 ETH transaction limit but above the 0.3 ETH approval threshold.
+- the original transaction was mined;
+- the tampered intent was not executed;
+- no second transaction was sent;
+- the Guardian nonce did not advance because of the blocked tampered attempt.
 
-Without an owner approval, the Guard rejects the execution.
+The demo is explicit-click because it creates a real Arbitrum Sepolia transaction.
 
-## Step 7: Owner approval allows the transfer
+## Security evidence
 
-The owner signs a fresh approval for the same execution intent.
+The repository also contains:
 
-The relayer submits the intent together with the approval.
+- a 10,000-case deterministic authorization benchmark against the real Guard;
+- a 100-execution Arbitrum Sepolia benchmark with 50 ALLOW and 50 BLOCK outcomes;
+- adversarial contract tests;
+- runtime/API integration tests;
+- coverage and Slither CI.
 
-The Guard verifies both signatures and the 0.4 ETH transfer succeeds.
-
-The total spend for the day is now 0.5 ETH.
-
-## Step 8: Daily limit blocks the next transfer
-
-The agent tries another 0.2 ETH transfer.
-
-The transaction itself is within the per-transaction limit, but 0.5 + 0.2 would exceed the 0.6 ETH daily limit.
-
-The Guard rejects the transaction.
-
-## Step 9: Owner pauses the agent
-
-The owner pauses the agent.
-
-Even a small execution that would otherwise satisfy the policy is rejected while the agent is paused.
-
-## Step 10: Recovery guardian disables the agent
-
-A recovery guardian is assigned to the agent.
-
-The guardian can deactivate the agent through the registry. After recovery, the agent is no longer active and protected execution is blocked.
-
-## What the demo proves
-
-The demo is not just a successful transaction.
-
-It shows that the same execution path can allow normal agent activity, require human approval for larger transfers, enforce a daily budget and stop the agent through an emergency control.
+These are evidence artifacts, not claims of production-scale security or an independent audit.
