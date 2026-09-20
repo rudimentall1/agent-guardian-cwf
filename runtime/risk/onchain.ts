@@ -1,5 +1,6 @@
-import { ethers } from "ethers";
+﻿import { ethers } from "ethers";
 import { RiskContext, RiskProvider, RiskAssessment, RiskSignal } from "./types";
+import { inspectCalldataRisk } from "./calldata";
 
 export type OnChainRiskOptions = { rpcUrl: string; name?: string };
 
@@ -43,6 +44,8 @@ export class OnChainRiskProvider implements RiskProvider {
         simulationReason = error instanceof Error ? error.message : "target call reverted";
       }
     }
+
+    const calldataSignals = inspectCalldataRisk(context.intent.data);
     const signals: RiskSignal[] = [
       { source: this.name, category: "contract", severity: hasCode ? "INFO" as const : "MEDIUM" as const,
         confidence: 1, code: hasCode ? "TARGET_HAS_CODE" : "TARGET_HAS_NO_CODE",
@@ -64,12 +67,26 @@ export class OnChainRiskProvider implements RiskProvider {
         message: simulationOk ? "The exact target calldata was accepted by an eth_call simulation." : "The exact target calldata reverted during eth_call simulation.",
         evidence: { simulated: hasCode, reverted: hasCode && !simulationOk, reason: simulationReason || null },
         observedAt: new Date().toISOString() },
+      ...calldataSignals.map((signal) => ({
+        source: this.name,
+        category: "calldata" as const,
+        severity: signal.severity,
+        confidence: signal.confidence,
+        code: signal.code,
+        message: signal.message,
+        evidence: signal.evidence,
+        observedAt: new Date().toISOString(),
+      })),
     ];
 
+    const hasHighCalldataRisk = calldataSignals.some(
+      (signal) => signal.severity === "HIGH" || signal.severity === "CRITICAL",
+    );
+
     return {
-      status: hasCode && simulationOk ? "CLEAR" : "REVIEW",
-      score: hasCode && simulationOk ? 10 : hasCode ? 70 : 55,
-      confidence: hasCode && simulationOk ? 0.95 : 0.8,
+      status: !hasCode || !simulationOk || hasHighCalldataRisk ? "REVIEW" : "CLEAR",
+      score: hasHighCalldataRisk ? 85 : hasCode && simulationOk ? 10 : hasCode ? 70 : 55,
+      confidence: hasHighCalldataRisk ? 0.9 : hasCode && simulationOk ? 0.95 : 0.8,
       degraded: false,
       signals,
     };
