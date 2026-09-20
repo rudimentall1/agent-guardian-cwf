@@ -53,21 +53,18 @@ console.log("Agent:", state.agent);
 console.log("ToolRequest: demo:ping(123)");
 console.log("Nonce:", nonce.toString());
 
-const { prepared, signature } = await client.prepareAndSign(request, signer);
+const result = await client.guardedExecute(request, signer);
+const { prepared, signature, preflight, execution } = result;
 console.log("Risk:", JSON.stringify(prepared.risk ?? null));
 console.log("Intent target:", prepared.intent.target);
 console.log("Intent calldata:", prepared.intent.data);
-
-const preflight = await client.preflight(prepared.intent, signature);
 console.log("Preflight:", preflight.decision, preflight.reason ?? "");
-
-if (preflight.decision !== "ALLOW") {
-  throw new Error("Guardian refused the valid agent request");
-}
-
-const execution = await client.execute(prepared.intent, signature);
 console.log("Execution:", execution.decision);
 console.log("Transaction:", execution.transactionHash ?? "none");
+
+if (preflight.decision !== "ALLOW" || execution.decision !== "ALLOW") {
+  throw new Error("Guardian refused the valid agent request");
+}
 
 const tampered: PreparedIntent = {
   ...prepared.intent,
