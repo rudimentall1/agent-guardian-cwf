@@ -270,6 +270,25 @@ export function createCwfApiHandler(context: CwfApiContext) {
         return;
       }
 
+      if(req.method==="POST" && req.url==="/v1/agent/demo/tamper-test"){
+        const root=process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const demoState=JSON.parse(readFileSync(join(root,"benchmark","agent-demo.json"),"utf8"));
+        if(!context.demoGuardContract || !context.demoAgentSigner) throw new Error("agent demo signer/relayer is not configured");
+        const nonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+        const iface=new ethers.Interface(["function ping(uint256 id)"]);
+        const signedIntent:TransactionIntent={agent:demoState.agent,wallet:demoState.wallet,target:demoState.target,value:0n,data:iface.encodeFunctionData("ping",[123]),nonce,deadline:BigInt(Math.floor(Date.now()/1000)+900),policyHash:demoState.policyHash};
+        const signature=await signIntent(context.demoAgentSigner,signedIntent,context.chainId,demoState.guard);
+        const tamperedIntent={...signedIntent,data:iface.encodeFunctionData("ping",[999])};
+        const recovered=ethers.verifyTypedData(buildIntentDomain(context.chainId,demoState.guard),EXECUTION_INTENT_TYPES,typedIntentMessage(signedIntent),signature);
+        try{
+          await context.demoGuardContract.executeFromWallet.staticCall(tamperedIntent.agent,tamperedIntent.wallet,tamperedIntent.target,tamperedIntent.value,tamperedIntent.data,tamperedIntent.nonce,tamperedIntent.deadline,tamperedIntent.policyHash,signature);
+          send(res,500,{ok:false,decision:"UNEXPECTED_ALLOW",signatureVerified:ethers.getAddress(recovered)===ethers.getAddress(demoState.agent)});
+        }catch(error){
+          send(res,200,{ok:true,decision:"BLOCK",signatureVerified:ethers.getAddress(recovered)===ethers.getAddress(demoState.agent),transactionSent:false,attack:"SIGNED_INTENT_CALldata_TAMPER",signedCalldataHash:ethers.keccak256(signedIntent.data),submittedCalldataHash:ethers.keccak256(tamperedIntent.data),reason:guardianErrorReason(error)});
+        }
+        return;
+      }
+
       if(req.method==="POST" && req.url==="/v1/agent/demo/block-test"){
         const root=process.env.CWF_PROJECT_ROOT ?? process.cwd();
         const demoState=JSON.parse(readFileSync(join(root,"benchmark","agent-demo.json"),"utf8"));
