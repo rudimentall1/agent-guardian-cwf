@@ -178,7 +178,7 @@ The demo verifies:
 The latest successful CI run verifies:
 
 - 208 Solidity/Hardhat contract tests
-- 20 runtime/API tests
+- 28 runtime/API tests
 - compile + test
 - coverage
 - Slither static analysis

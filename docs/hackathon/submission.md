@@ -189,9 +189,9 @@ The target contract is shared between both evidence sets.
 
 ## Current product scope
 
-The current hackathon product is the on-chain execution security boundary plus a small developer-facing runtime/API and evidence dashboard.
+The current hackathon product is the on-chain execution security boundary plus a developer-facing runtime/API, integration SDK and evidence dashboard.
 
-It does not claim a production SDK, external connector ecosystem, independent audit, monitoring/alerting system or multi-chain production rollout.
+The SDK is intentionally small and integration-focused; it is not presented as a mature published npm ecosystem. The project does not claim an external connector ecosystem, independent audit, monitoring/alerting system or multi-chain production rollout.
 
 ## Current status
 
