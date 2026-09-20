@@ -154,7 +154,7 @@ The demo verifies that:
 
 Current CI verifies:
 
-- 199 Solidity/Hardhat contract tests
+- 208 Solidity/Hardhat contract tests
 - 20 runtime/API tests
 - compile + test
 - coverage

@@ -24,11 +24,11 @@
 
 ## Tests and analysis
 
-- [x] 199 Solidity/Hardhat contract tests passing
+- [x] 208 Solidity/Hardhat contract tests passing
 - [x] 20 CWF runtime/API tests passing
-- [x] 219 total automated tests passing
+- [x] 228 total automated tests passing
 - [x] Coverage run in CI against the current commit
-- [x] Coverage reviewed: 96.21% statements, 79.74% branches, 90.79% functions, 94.30% lines
+- [x] Coverage reviewed: 97.65% statements, 87.07% branches, 92.41% functions, 95.35% lines
 - [x] Slither rerun against the current commit
 - [x] Slither CI passes with fail-on: high; no high-severity finding blocks the current commit
 
