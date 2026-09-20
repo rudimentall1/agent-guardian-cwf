@@ -13,63 +13,86 @@
 - [x] Nonce and deadline protection
 - [x] Emergency pause and recovery
 - [x] AgentSmartWallet custody
+- [x] Canonical wallet binding
 - [x] Wrong-Guard wallet protection
 - [x] Reentrancy protection
 - [x] Cross-chain and cross-contract replay protection
+- [x] Live on-chain Risk Intelligence with fail-closed provider handling
+- [x] One-click real-chain security demo
+- [x] 10,000 authorization benchmark
+- [x] 100 real Arbitrum Sepolia executions
 
 ## Tests and analysis
 
-- [x] 183 contract tests passing
-- [x] 13 runtime/API tests passing
-- [x] 196 total tests passing
-- [ ] Coverage run successfully after the wallet-binding changes
-- [ ] Coverage reviewed for the current run
-- [ ] Slither rerun against the wallet-binding changes
-- [ ] No high-severity Slither finding blocking the current commit
-
-### Testing scope
-
-The test suite covers replay protection, modified calldata and signed fields, exact target and selector authorization, spending limits, owner approvals, reentrancy, ERC-1271 identities, wallet custody, ownership transfer edge cases and emergency recovery.
-
-Real Foundry/Echidna fuzzing has not been run. The current `*.fuzz.test.ts` coverage uses seeded randomized test cases in Hardhat.
+- [x] 199 Solidity/Hardhat contract tests passing
+- [x] 20 CWF runtime/API tests passing
+- [x] 219 total automated tests passing
+- [x] Coverage run in CI against the current commit
+- [x] Coverage reviewed: 96.21% statements, 79.74% branches, 90.79% functions, 94.30% lines
+- [x] Slither rerun against the current commit
+- [x] Slither CI passes with fail-on: high; no high-severity finding blocks the current commit
 
 ## Deployment
 
-- [ ] Redeploy the current contract version to Arbitrum Sepolia
-- [ ] Record the new deployment addresses in `deployments.json`
-- [x] Demo video published
-- [ ] Verify the published demo and deployment use the same contract version
+- [x] Current contracts deployed to Arbitrum Sepolia for the real benchmark
+- [x] Current agent-demo deployment recorded separately
+- [x] Deployment addresses synchronized in deployments.json
+- [x] Real-chain execution evidence recorded in benchmark/real-100-latest.json
+- [ ] Final judge video recorded
+- [ ] Final submission form completed
 
 Network: **Arbitrum Sepolia**
 
 Chain ID: **421614**
 
-## Demo
+## Current live evidence
 
-Demo video:
+### Real-chain benchmark
 
-https://youtu.be/z7_GXu9Phwc
+- 100 mined executions
+- 50 expected ALLOW / 50 expected BLOCK
+- 50 successful receipts / 50 reverted receipts
+- false ALLOW: 0
+- false BLOCK: 0
+- total gas: 8,216,729
+- average gas: 82,167
+- p50 latency: ~3.02s
+- p95 latency: ~3.24s
+- p99 latency: ~7.52s
 
-The demo covers agent registration, policy creation, wallet custody, owner approval, daily limits, pause and recovery.
+### One-click security demo
+
+The current agent-demo flow proves:
+
+1. agent request
+2. canonical intent construction
+3. live on-chain risk assessment
+4. EIP-712 agent signature
+5. real Guard preflight
+6. real Arbitrum Sepolia execution
+7. calldata tampering after signing
+8. Guardian rejection with InvalidSignature
+9. no second transaction
+10. nonce unchanged after the blocked tampered attempt
+
+The demo is deliberately explicit-click because it sends a real testnet transaction.
 
 ## Known limitations
 
 - [ ] Foundry/Echidna fuzzing
 - [ ] Independent security audit
-- [ ] Off-chain AI risk engine
-- [ ] SDK
-- [ ] Monitoring dashboard
-- [ ] Robinhood Chain deployment
-- [ ] Production monitoring and alerting
-
-These items are future work. They are not presented as implemented features.
+- [ ] Production SDK
+- [ ] Monitoring/alerting
+- [ ] Additional chain deployments
 
 ## Submission status
 
-**Technical prototype: READY**
+**Security core: IMPLEMENTED**
 
-**Deployment: REDEPLOY REQUIRED after the wallet-binding security fix**
+**Current test/analysis state: VERIFIED**
 
-**Local demo: VERIFIED**
+**Arbitrum Sepolia evidence: VERIFIED**
 
-**Documentation: UPDATED for the wallet-binding security fix**
+**Judge-facing product demo: READY TO RECORD**
+
+**Final submission package: NOT YET FINAL**
