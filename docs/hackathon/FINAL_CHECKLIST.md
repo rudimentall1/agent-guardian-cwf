@@ -1,4 +1,4 @@
-# Agent Guardian - Final Checklist
+﻿# Agent Guardian - Final Checklist
 
 ## Current state
 
@@ -18,6 +18,7 @@
 - [x] Reentrancy protection
 - [x] Cross-chain and cross-contract replay protection
 - [x] Live on-chain Risk Intelligence with fail-closed provider handling
+- [x] High-risk calldata inspection for unlimited ERC-20 approvals
 - [x] One-click real-chain security demo
 - [x] 10,000 authorization benchmark
 - [x] 100 real Arbitrum Sepolia executions
@@ -25,8 +26,8 @@
 ## Tests and analysis
 
 - [x] 208 Solidity/Hardhat contract tests passing
-- [x] 20 CWF runtime/API tests passing
-- [x] 228 total automated tests passing
+- [x] 25 CWF runtime/API tests passing
+- [x] 233 total automated tests passing
 - [x] Coverage run in CI against the current commit
 - [x] Coverage reviewed: 97.65% statements, 87.07% branches, 92.41% functions, 95.35% lines
 - [x] Slither rerun against the current commit
@@ -96,3 +97,4 @@ The demo is deliberately explicit-click because it sends a real testnet transact
 **Judge-facing product demo: READY TO RECORD**
 
 **Final submission package: NOT YET FINAL**
+
