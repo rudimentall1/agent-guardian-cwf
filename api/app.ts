@@ -270,6 +270,46 @@ export function createCwfApiHandler(context: CwfApiContext) {
         return;
       }
 
+      if(req.method==="POST" && req.url==="/v1/agent/demo/security-demo"){
+        const root=process.env.CWF_PROJECT_ROOT ?? process.cwd();
+        const demoState=JSON.parse(readFileSync(join(root,"benchmark","agent-demo.json"),"utf8"));
+        if(!context.demoGuardContract || !context.demoAgentSigner) throw new Error("agent demo signer/relayer is not configured");
+        const timeline:any[]=[]; const startedAt=Date.now();
+        const push=(stage:string,status:string,details:any={})=>timeline.push({stage,status,elapsedMs:Date.now()-startedAt,...details});
+        push("AGENT_REQUEST","complete",{tool:"demo:ping",action:"ping",args:[123]});
+        const nonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+        const iface=new ethers.Interface(["function ping(uint256 id)"]);
+        const intent:TransactionIntent={agent:demoState.agent,wallet:demoState.wallet,target:demoState.target,value:0n,data:iface.encodeFunctionData("ping",[Number(nonce%100000n)]),nonce,deadline:BigInt(Math.floor(Date.now()/1000)+900),policyHash:demoState.policyHash};
+        const risk=await assessRisk({intent,chainId:context.chainId},context.riskProviders??[]);
+        push("CANONICAL_INTENT","complete",{intent:serializeIntent(intent),digest:intentDigest(intent,context.chainId,demoState.guard)});
+        push("RISK_INTELLIGENCE",risk.status==="CLEAR"?"clear":"blocked",{status:risk.status,score:risk.score,confidence:risk.confidence,signals:risk.signals});
+        if(risk.status!=="CLEAR"){send(res,200,{ok:true,decision:"BLOCK",timeline,summary:{realTransactionSent:false,secondTransactionSent:false}});return;}
+        const signature=await signIntent(context.demoAgentSigner,intent,context.chainId,demoState.guard);
+        const recovered=ethers.verifyTypedData(buildIntentDomain(context.chainId,demoState.guard),EXECUTION_INTENT_TYPES,typedIntentMessage(intent),signature);
+        const signatureVerified=ethers.getAddress(recovered)===ethers.getAddress(demoState.agent);
+        push("AGENT_SIGNATURE","verified",{signatureVerified,agent:demoState.agent});
+        if(!signatureVerified) throw new Error("agent signature recovery mismatch");
+        await context.demoGuardContract.executeFromWallet.staticCall(intent.agent,intent.wallet,intent.target,intent.value,intent.data,intent.nonce,intent.deadline,intent.policyHash,signature);
+        push("GUARDIAN_PREFLIGHT","allow",{preflightPassed:true});
+        const tx=await context.demoGuardContract.executeFromWallet(intent.agent,intent.wallet,intent.target,intent.value,intent.data,intent.nonce,intent.deadline,intent.policyHash,signature,{gasLimit:500000n});
+        const receipt=await tx.wait(); const txHash=receipt?.hash??tx.hash;
+        push("REAL_TX","mined",{transactionHash:txHash,blockNumber:receipt?.blockNumber??null,gasUsed:receipt?.gasUsed?.toString()??null,explorer:"https://sepolia.arbiscan.io/tx/"+txHash});
+        const attackNonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+        const signedAttack:TransactionIntent={...intent,nonce:attackNonce,data:iface.encodeFunctionData("ping",[123])};
+        const attackSignature=await signIntent(context.demoAgentSigner,signedAttack,context.chainId,demoState.guard);
+        const tamperedIntent={...signedAttack,data:iface.encodeFunctionData("ping",[999])};
+        const signedHash=ethers.keccak256(signedAttack.data), submittedHash=ethers.keccak256(tamperedIntent.data);
+        push("ATTACK","calldata_modified",{signedCalldataHash:signedHash,submittedCalldataHash:submittedHash,hashChanged:signedHash!==submittedHash});
+        const attackRecovered=ethers.verifyTypedData(buildIntentDomain(context.chainId,demoState.guard),EXECUTION_INTENT_TYPES,typedIntentMessage(signedAttack),attackSignature);
+        try{ await context.demoGuardContract.executeFromWallet.staticCall(tamperedIntent.agent,tamperedIntent.wallet,tamperedIntent.target,tamperedIntent.value,tamperedIntent.data,tamperedIntent.nonce,tamperedIntent.deadline,tamperedIntent.policyHash,attackSignature); send(res,500,{ok:false,error:"tamper_unexpectedly_allowed",timeline}); }
+        catch(error){
+          const finalNonce=BigInt((await context.demoGuardContract.nextNonce(demoState.agent)).toString());
+          push("GUARDIAN_BLOCK","blocked",{signatureVerified:ethers.getAddress(attackRecovered)===ethers.getAddress(demoState.agent),reason:guardianErrorReason(error),transactionSent:false});
+          send(res,200,{ok:true,decision:"ALLOW_THEN_BLOCK",timeline,allow:{transactionHash:txHash,blockNumber:receipt?.blockNumber??null,gasUsed:receipt?.gasUsed?.toString()??null,explorer:"https://sepolia.arbiscan.io/tx/"+txHash,signatureVerified,nonce:intent.nonce.toString()},tamper:{signatureVerified:ethers.getAddress(attackRecovered)===ethers.getAddress(demoState.agent),signedCalldataHash:signedHash,submittedCalldataHash:submittedHash,reason:guardianErrorReason(error),transactionSent:false,nonceBeforeAttack:attackNonce.toString(),nonceAfterAttack:finalNonce.toString(),nonceUnchanged:finalNonce===attackNonce},summary:{realTransactionSent:true,secondTransactionSent:false,finalNonce:finalNonce.toString()}});
+        }
+        return;
+      }
+
       if(req.method==="POST" && req.url==="/v1/agent/demo/tamper-test"){
         const root=process.env.CWF_PROJECT_ROOT ?? process.cwd();
         const demoState=JSON.parse(readFileSync(join(root,"benchmark","agent-demo.json"),"utf8"));
