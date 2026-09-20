@@ -32,6 +32,16 @@ The resulting intent contains the agent, wallet, target, value, calldata, nonce,
 
 The intent is signed with EIP-712.
 
+### Agent Guardian SDK
+
+`sdk/index.ts` exposes a small integration client for external agents. It calls the public `/v1/agent/prepare` boundary, signs the returned EIP-712 typed data with the agent signer, then sends the signed intent through Guardian preflight or `/v1/agent/execute`.
+
+The integration path is therefore:
+
+`Agent -> AgentGuardianClient -> ToolRequest -> Canonical Intent -> Risk -> EIP-712 -> Guardian -> Wallet -> Target`
+
+See `runtime-test/sdk-client.test.ts` for the reusable integration contract exercised against the same public API surface.
+
 ### AgentExecutionGuard
 
 `contracts/AgentExecutionGuard.sol` performs the final authorization checks before execution.
@@ -226,8 +236,7 @@ The current hackathon product is the transaction security boundary between an au
 
 It does not claim:
 
-- a production SDK
-- a large external connector ecosystem
+- a mature published npm SDK or large external connector ecosystem
 - production monitoring/alerting
 - independent security audit
 - multi-chain production rollout
