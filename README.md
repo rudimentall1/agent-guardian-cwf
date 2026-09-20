@@ -1,4 +1,4 @@
-# Agent Guardian CWF
+﻿# Agent Guardian CWF
 
 ## Security boundary for autonomous AI agent transactions
 
@@ -104,6 +104,7 @@ The current real provider uses Arbitrum Sepolia RPC data to inspect:
 - transaction history
 - chain ID
 - calldata selector/size
+- known high-risk calldata patterns such as unlimited ERC-20 approvals
 - intent value
 
 Provider failure produces `REVIEW` with degraded status, and the HTTP execution path refuses to execute. Deterministic Guardian enforcement remains the final on-chain authority.
@@ -252,3 +253,4 @@ Active hackathon codebase.
 **Security core: implemented and validated.**
 
 **Final submission material and judge-facing video: still pending.**
+
