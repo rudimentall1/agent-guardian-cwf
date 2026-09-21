@@ -156,7 +156,7 @@ The demo verifies that:
 Current CI verifies:
 
 - 208 Solidity/Hardhat contract tests
-- 20 runtime/API tests
+- 28 runtime/API tests
 - compile + test
 - coverage
 - Slither static analysis
@@ -187,6 +187,20 @@ Two current deployments are recorded separately in deployments.json:
 
 The target contract is shared between both evidence sets.
 
+## Submission videos
+
+Presentation:
+https://youtu.be/kl5gLOeRggw
+
+Product demo:
+https://youtu.be/yyGg0d7pzfc
+
+## CWF development disclosure
+
+Agent Guardian CWF is based on an earlier Agent Guardian / Arbitrum codebase. The pre-existing foundation is not presented as CWF-created work.
+
+The CWF development ledger records the baseline before the competition and the material features implemented during the competition period.
+
 ## Current product scope
 
 The current hackathon product is the on-chain execution security boundary plus a developer-facing runtime/API, integration SDK and evidence dashboard.
@@ -197,4 +211,4 @@ The SDK is intentionally small and integration-focused; it is not presented as a
 
 **Security core implemented and validated.**
 
-The remaining hackathon work is product polish, final end-to-end verification, submission material and judge-facing demonstration.
+Submission material is prepared and the judge-facing demonstration has been verified.

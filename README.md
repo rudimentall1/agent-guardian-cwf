@@ -223,6 +223,22 @@ Build with `npm run build:dashboard`.
 
 Run the combined API and dashboard server with `npm run start:api`.
 
+## CWF submission material
+
+Presentation video:
+https://youtu.be/kl5gLOeRggw
+
+Product demo:
+https://youtu.be/yyGg0d7pzfc
+
+The videos are final submission material. The product demo focuses on the technical execution path rather than repeating the presentation.
+
+## CWF development disclosure
+
+Agent Guardian CWF is based on an earlier Agent Guardian / Arbitrum codebase. Pre-existing foundation work is disclosed separately in docs/hackathon/CWF_DEVELOPMENT_LEDGER.md.
+
+The ledger identifies the baseline before CWF and the material features implemented during the competition period.
+
 ## Local development
 
 `npm install`
@@ -237,7 +253,7 @@ Run the combined API and dashboard server with `npm run start:api`.
 
 ## Current scope
 
-The current hackathon product is the transaction security boundary between an autonomous agent request and blockchain execution, plus a small developer-facing runtime/API and evidence dashboard.
+The current hackathon product is the transaction security boundary between an autonomous agent request and blockchain execution, plus a developer-facing runtime/API, integration SDK and evidence dashboard.
 
 It does not claim:
 
@@ -250,10 +266,10 @@ The final execution authority is deterministic on-chain policy enforcement. Opti
 
 ## Status
 
-Active hackathon codebase.
-
 **Security core: implemented and validated.**
 
-**Final submission material and judge-facing video: still pending.**
+**CWF submission material: prepared.**
+
+**Judge-facing demo: verified.**
 
 
