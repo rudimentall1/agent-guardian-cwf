@@ -6,6 +6,12 @@ Agent Guardian CWF is a transaction security layer for AI agents interacting wit
 
 The product combines deterministic on-chain authorization, a developer-facing request/runtime layer, fail-closed risk intelligence, and a real-chain security evidence dashboard.
 
+## Live demo
+
+Public security evidence dashboard: http://77.239.125.37:8787/
+
+It exposes the recorded 10,000 authorization benchmark, 100 real Arbitrum Sepolia executions, live RPC risk evidence, deployment addresses, and recent transaction hashes.
+
 ## Execution flow
 
 1. An agent creates a ToolRequest.
