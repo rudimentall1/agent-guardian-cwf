@@ -1,6 +1,6 @@
-﻿# Agent Guardian CWF
+# Agent Guardian CWF
 
-## Security boundary for autonomous AI agent transactions
+**Let AI agents execute on-chain without giving them unrestricted execution power.**
 
 Agent Guardian CWF is a transaction security layer for AI agents interacting with blockchain contracts.
 
