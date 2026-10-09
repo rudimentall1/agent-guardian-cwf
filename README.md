@@ -1,5 +1,11 @@
 # Agent Guardian CWF
 
+## Watch the demo
+
+[![Watch the demo on YouTube](https://img.youtube.com/vi/yyGg0d7pzfc/hqdefault.jpg)](https://www.youtube.com/watch?v=yyGg0d7pzfc)
+
+Select the preview to play the video in your browser.
+
 **Let AI agents execute on-chain without giving them unrestricted execution power.**
 
 Agent Guardian CWF is a transaction security layer for AI agents interacting with blockchain contracts.
